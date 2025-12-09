@@ -61,7 +61,9 @@ class AlbumCoverPicker extends StatelessWidget {
             width: 110,
             height: 110,
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[800] : Colors.grey[200],
+              color: isDark
+                  ? const Color(0xFF2C2518) // Dark Gold/Earth
+                  : const Color(0xFFFFF8E1), // Light Amber
               borderRadius: BorderRadius.circular(12),
               image: imagePath != null
                   ? DecorationImage(
@@ -73,7 +75,9 @@ class AlbumCoverPicker extends StatelessWidget {
             child: imagePath == null
                 ? Icon(
                     Icons.album,
-                    color: isDark ? Colors.grey[600] : Colors.grey[400],
+                    color: isDark
+                        ? const Color(0xFFD4AF37) // Metallic Gold (Dark mode)
+                        : const Color(0xFFE6C200), // Amber Gold (Light mode)
                     size: 50,
                   )
                 : null,
@@ -88,11 +92,7 @@ class AlbumCoverPicker extends StatelessWidget {
                 width: 2,
               ),
             ),
-            child: const Icon(
-              Icons.camera_alt,
-              color: Colors.white,
-              size: 18,
-            ),
+            child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
           ),
         ],
       ),

@@ -107,7 +107,9 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       }).toList();
     }
     _filteredSongs.sort((a, b) {
-      final artistCompare = a.album.artist.toLowerCase().compareTo(b.album.artist.toLowerCase());
+      final artistCompare = a.album.artist.toLowerCase().compareTo(
+        b.album.artist.toLowerCase(),
+      );
       if (artistCompare != 0) return artistCompare;
       return a.track.title.toLowerCase().compareTo(b.track.title.toLowerCase());
     });
@@ -159,18 +161,20 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: otherAlbums
-                .map((album) => CupertinoDialogAction(
-                      child: Text(album.title),
-                      onPressed: () {
-                        Navigator.pop(context); // Close the dialog
-                        Navigator.push(
-                          context,
-                          CupertinoPageRoute(
-                            builder: (context) => DetailScreen(album: album),
-                          ),
-                        );
-                      },
-                    ))
+                .map(
+                  (album) => CupertinoDialogAction(
+                    child: Text(album.title),
+                    onPressed: () {
+                      Navigator.pop(context); // Close the dialog
+                      Navigator.push(
+                        context,
+                        CupertinoPageRoute(
+                          builder: (context) => DetailScreen(album: album),
+                        ),
+                      );
+                    },
+                  ),
+                )
                 .toList(),
           ),
           actions: [
@@ -217,9 +221,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       child: CupertinoScrollbar(
         child: CustomScrollView(
           slivers: [
-            const CupertinoSliverNavigationBar(
-              largeTitle: Text('모든 곡'),
-            ),
+            const CupertinoSliverNavigationBar(largeTitle: Text('모든 곡')),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -253,20 +255,38 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                CupertinoIcons.music_note_2,
-                color: CupertinoColors.secondaryLabel.resolveFrom(context),
-                size: 50,
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  color: CupertinoColors.systemGrey6.resolveFrom(context),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  CupertinoIcons.music_albums_fill,
+                  color: CupertinoColors.systemGrey.resolveFrom(context),
+                  size: 30,
+                ),
               ),
               const SizedBox(height: 16),
               Text(
-                '표시할 곡이 없습니다.',
-                style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context)),
+                '표시할 곡이 없습니다',
+                style: TextStyle(
+                  color: CupertinoColors.label.resolveFrom(context),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: '.SF Pro Text',
+                  decoration: TextDecoration.none, // Fix yellow underline
+                ),
               ),
               const SizedBox(height: 8),
               Text(
-                '앨범을 추가하여 곡 목록을 채워보세요.',
-                style: TextStyle(color: CupertinoColors.tertiaryLabel.resolveFrom(context)),
+                '앨범을 추가하여 보관함을 채워보세요.',
+                style: TextStyle(
+                  color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                  fontSize: 15,
+                  decoration: TextDecoration.none, // Fix yellow underline
+                ),
               ),
             ],
           ),
@@ -277,27 +297,24 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     return SliverSafeArea(
       top: false,
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final songRef = _filteredSongs[index];
-            return _SongListItem(
-              songRef: songRef,
-              onTap: () async {
-                final result = await Navigator.push(
-                  context,
-                  CupertinoPageRoute(
-                    builder: (context) => DetailScreen(album: songRef.album),
-                  ),
-                );
-                if (result == true && mounted) {
-                  await _loadAllSongs();
-                }
-              },
-              onMoreTap: () => _showSongActions(songRef),
-            );
-          },
-          childCount: _filteredSongs.length,
-        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final songRef = _filteredSongs[index];
+          return _SongListItem(
+            songRef: songRef,
+            onTap: () async {
+              final result = await Navigator.push(
+                context,
+                CupertinoPageRoute(
+                  builder: (context) => DetailScreen(album: songRef.album),
+                ),
+              );
+              if (result == true && mounted) {
+                await _loadAllSongs();
+              }
+            },
+            onMoreTap: () => _showSongActions(songRef),
+          );
+        }, childCount: _filteredSongs.length),
       ),
     );
   }
@@ -334,7 +351,10 @@ class _SongListItem extends StatelessWidget {
                   child: SizedBox(
                     width: 50,
                     height: 50,
-                    child: imagePath != null && imagePath.isNotEmpty && File(imagePath).existsSync()
+                    child:
+                        imagePath != null &&
+                            imagePath.isNotEmpty &&
+                            File(imagePath).existsSync()
                         ? Image.file(File(imagePath), fit: BoxFit.cover)
                         : Container(
                             color: CupertinoColors.systemGrey5,
@@ -364,7 +384,9 @@ class _SongListItem extends StatelessWidget {
                       Text(
                         album.artist,
                         style: TextStyle(
-                          color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                          color: CupertinoColors.secondaryLabel.resolveFrom(
+                            context,
+                          ),
                           fontSize: 15,
                         ),
                         maxLines: 1,

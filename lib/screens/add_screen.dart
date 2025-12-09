@@ -47,7 +47,7 @@ class _AddScreenState extends State<AddScreen> {
     if (mounted) {
       // Defer the setState call to after the build phase
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if(mounted) setState(() {});
+        if (mounted) setState(() {});
       });
     }
   }
@@ -55,7 +55,7 @@ class _AddScreenState extends State<AddScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Consumer<AlbumFormViewModel>(
       builder: (context, viewModel, child) {
         if (viewModel.errorMessage != null) {
@@ -71,14 +71,13 @@ class _AddScreenState extends State<AddScreen> {
             child: Stack(
               children: [
                 if (viewModel.currentAlbum != null)
-                  Form(
-                    key: _formKey,
-                    child: _buildForm(context, viewModel),
-                  ),
+                  Form(key: _formKey, child: _buildForm(context, viewModel)),
                 if (viewModel.isLoading)
                   Positioned.fill(
                     child: Container(
-                      color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+                      color: theme.scaffoldBackgroundColor.withValues(
+                        alpha: 0.5,
+                      ),
                       child: const Center(child: CircularProgressIndicator()),
                     ),
                   ),
@@ -117,7 +116,7 @@ class _AddScreenState extends State<AddScreen> {
 
   Widget _buildForm(BuildContext context, AlbumFormViewModel viewModel) {
     final theme = Theme.of(context);
-    
+
     return CustomScrollView(
       slivers: [
         SliverPadding(
@@ -128,6 +127,7 @@ class _AddScreenState extends State<AddScreen> {
                 _ImagePicker(viewModel: viewModel),
                 const SizedBox(height: 16),
                 _buildTextField(_controllers.title, '앨범 제목', isRequired: true),
+                _buildTextField(_controllers.titleKr, '앨범 제목 (한국어)'),
                 _buildTextField(_controllers.artist, '아티스트', isRequired: true),
               ]),
               _buildSection('세부 정보', [
@@ -142,9 +142,27 @@ class _AddScreenState extends State<AddScreen> {
                 _buildTextField(_controllers.style, '스타일 (쉼표로 구분)'),
               ]),
               _buildSection('옵션', [
-                _buildSwitchTile('한정판', viewModel.currentAlbum!.isLimited, (v) => viewModel.updateCurrentAlbum(viewModel.currentAlbum!.copyWith(isLimited: v))),
-                _buildSwitchTile('특이사항', viewModel.currentAlbum!.isSpecial, (v) => viewModel.updateCurrentAlbum(viewModel.currentAlbum!.copyWith(isSpecial: v))),
-                _buildSwitchTile('위시리스트', viewModel.currentAlbum!.isWishlist, (v) => viewModel.updateCurrentAlbum(viewModel.currentAlbum!.copyWith(isWishlist: v))),
+                _buildSwitchTile(
+                  '한정판',
+                  viewModel.currentAlbum!.isLimited,
+                  (v) => viewModel.updateCurrentAlbum(
+                    viewModel.currentAlbum!.copyWith(isLimited: v),
+                  ),
+                ),
+                _buildSwitchTile(
+                  '특이사항',
+                  viewModel.currentAlbum!.isSpecial,
+                  (v) => viewModel.updateCurrentAlbum(
+                    viewModel.currentAlbum!.copyWith(isSpecial: v),
+                  ),
+                ),
+                _buildSwitchTile(
+                  '위시리스트',
+                  viewModel.currentAlbum!.isWishlist,
+                  (v) => viewModel.updateCurrentAlbum(
+                    viewModel.currentAlbum!.copyWith(isWishlist: v),
+                  ),
+                ),
               ]),
             ]),
           ),
@@ -185,18 +203,15 @@ class _AddScreenState extends State<AddScreen> {
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           sliver: ReorderableSliverList(
-            delegate: ReorderableSliverChildBuilderDelegate(
-              (context, index) {
-                final track = viewModel.currentAlbum!.tracks[index];
-                return _TrackListItemWidget(
-                  key: ValueKey(track.id), // Use stable, unique ID for the key
-                  track: track,
-                  viewModel: viewModel,
-                  index: index,
-                );
-              },
-              childCount: viewModel.currentAlbum!.tracks.length,
-            ),
+            delegate: ReorderableSliverChildBuilderDelegate((context, index) {
+              final track = viewModel.currentAlbum!.tracks[index];
+              return _TrackListItemWidget(
+                key: ValueKey(track.id), // Use stable, unique ID for the key
+                track: track,
+                viewModel: viewModel,
+                index: index,
+              );
+            }, childCount: viewModel.currentAlbum!.tracks.length),
             onReorder: (oldIndex, newIndex) {
               setState(() {
                 // Adjust index when moving an item down the list.
@@ -230,50 +245,82 @@ class _AddScreenState extends State<AddScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, {bool isRequired = false, int maxLines = 1}) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label, {
+    bool isRequired = false,
+    int maxLines = 1,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextFormField(
         controller: controller,
         decoration: InputDecoration(labelText: label),
         maxLines: maxLines,
-        validator: isRequired ? (value) => value == null || value.isEmpty ? '$label 필드는 필수입니다.' : null : null,
+        validator: isRequired
+            ? (value) =>
+                  value == null || value.isEmpty ? '$label 필드는 필수입니다.' : null
+            : null,
       ),
     );
   }
-  
-  Widget _buildSwitchTile(String title, bool value, ValueChanged<bool> onChanged) {
+
+  Widget _buildSwitchTile(
+    String title,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
     return SwitchListTile(
       title: Text(title),
       value: value,
       onChanged: onChanged,
       contentPadding: EdgeInsets.zero,
-      activeColor: Theme.of(context).colorScheme.primary,
+      // 'activeColor' is deprecated, use 'activeThumbColor' or rely on theme
+      // Assuming 'activeThumbColor' is the correct replacement
+      activeThumbColor: Theme.of(context).colorScheme.primary,
     );
   }
 
   // --- Actions ---
 
-  Future<void> _scanBarcode(BuildContext context, AlbumFormViewModel viewModel) async {
-    final result = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
+  Future<void> _scanBarcode(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+  ) async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+    );
     if (result != null && mounted) {
       await viewModel.searchByBarcode(result);
     }
   }
 
-  Future<void> _saveForm(BuildContext context, AlbumFormViewModel viewModel) async {
+  Future<void> _saveForm(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+  ) async {
     if (_formKey.currentState!.validate()) {
       _controllers.commitChanges(viewModel); // Commit final text changes
       await viewModel.saveAlbum(widget.albumToEdit?.id);
-      if (mounted && viewModel.errorMessage == null) {
+
+      if (!mounted) return;
+      if (viewModel.errorMessage == null) {
         Navigator.pop(context, true);
       }
     }
   }
-  
-  Future<void> _showSearchDialog(BuildContext context, AlbumFormViewModel viewModel) async {
-    final searchTitleController = TextEditingController(text: _controllers.title.text);
-    final searchArtistController = TextEditingController(text: _controllers.artist.text);
+
+  Future<void> _showSearchDialog(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+  ) async {
+    final searchTitleController = TextEditingController(
+      text: _controllers.title.text,
+    );
+    final searchArtistController = TextEditingController(
+      text: _controllers.artist.text,
+    );
 
     final result = await showDialog<Map<String, String>>(
       context: context,
@@ -283,15 +330,28 @@ class _AddScreenState extends State<AddScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: searchArtistController, decoration: const InputDecoration(labelText: '아티스트 (선택 사항)')),
+              TextField(
+                controller: searchArtistController,
+                decoration: const InputDecoration(labelText: '아티스트 (선택 사항)'),
+              ),
               const SizedBox(height: 8),
-              TextField(controller: searchTitleController, decoration: const InputDecoration(labelText: '앨범 제목'), autofocus: true),
+              TextField(
+                controller: searchTitleController,
+                decoration: const InputDecoration(labelText: '앨범 제목'),
+                autofocus: true,
+              ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('취소')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('취소'),
+            ),
             ElevatedButton(
-              onPressed: () => Navigator.pop(dialogContext, {'artist': searchArtistController.text, 'title': searchTitleController.text}),
+              onPressed: () => Navigator.pop(dialogContext, {
+                'artist': searchArtistController.text,
+                'title': searchTitleController.text,
+              }),
               child: const Text('검색'),
             ),
           ],
@@ -302,21 +362,31 @@ class _AddScreenState extends State<AddScreen> {
     if (result != null && mounted) {
       final artist = result['artist']?.trim();
       final title = result['title']?.trim();
-      if (title != null && title.isNotEmpty) {
-        final searchResults = await viewModel.searchByTitleArtist(artist: artist, title: title);
-        if (mounted) _showSearchResultsDialog(context, viewModel, searchResults);
+
+      if ((title != null && title.isNotEmpty) ||
+          (artist != null && artist.isNotEmpty)) {
+        final searchResults = await viewModel.searchByTitleArtist(
+          artist: artist,
+          title: title,
+        );
+        if (mounted) {
+          _showSearchResultsDialog(context, viewModel, searchResults);
+        }
       }
     }
   }
 
-  Future<void> _showSearchResultsDialog(BuildContext context,
-      AlbumFormViewModel viewModel, List<dynamic> results) async {
+  Future<void> _showSearchResultsDialog(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+    List<dynamic> results,
+  ) async {
     if (!mounted) return;
 
     if (results.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('검색 결과가 없습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('검색 결과가 없습니다.')));
       return;
     }
 
@@ -327,8 +397,10 @@ class _AddScreenState extends State<AddScreen> {
       builder: (dialogContext) {
         return AlertDialog(
           title: Text('앨범 검색 결과', style: theme.textTheme.headlineSmall),
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 20.0, horizontal: 8),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 20.0,
+            horizontal: 8,
+          ),
           content: SizedBox(
             width: MediaQuery.of(context).size.width * 0.9,
             height: MediaQuery.of(context).size.height * 0.7,
@@ -352,8 +424,10 @@ class _AddScreenState extends State<AddScreen> {
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -370,34 +444,37 @@ class _AddScreenState extends State<AddScreen> {
                                     fit: BoxFit.cover,
                                     loadingBuilder:
                                         (context, child, loadingProgress) {
-                                      if (loadingProgress == null) return child;
-                                      return Center(
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.0,
-                                          value: loadingProgress
-                                                      .expectedTotalBytes !=
-                                                  null
-                                              ? loadingProgress
-                                                      .cumulativeBytesLoaded /
+                                          if (loadingProgress == null) {
+                                            return child;
+                                          }
+                                          return Center(
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.0,
+                                              value:
                                                   loadingProgress
-                                                      .expectedTotalBytes!
-                                              : null,
+                                                          .expectedTotalBytes !=
+                                                      null
+                                                  ? loadingProgress
+                                                            .cumulativeBytesLoaded /
+                                                        loadingProgress
+                                                            .expectedTotalBytes!
+                                                  : null,
+                                            ),
+                                          );
+                                        },
+                                    errorBuilder:
+                                        (context, error, stackTrace) => Icon(
+                                          Icons.music_note,
+                                          size: 40,
+                                          color: theme.colorScheme.onSurface
+                                              .withValues(alpha: 0.5),
                                         ),
-                                      );
-                                    },
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        Icon(
-                                      Icons.music_note,
-                                      size: 40,
-                                      color: theme.colorScheme.onSurface
-                                          .withOpacity(0.5),
-                                    ),
                                   )
                                 : Icon(
                                     Icons.music_note,
                                     size: 40,
                                     color: theme.colorScheme.onSurface
-                                        .withOpacity(0.5),
+                                        .withValues(alpha: 0.5),
                                   ),
                           ),
                         ),
@@ -409,8 +486,9 @@ class _AddScreenState extends State<AddScreen> {
                             children: [
                               Text(
                                 title,
-                                style: theme.textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.bold),
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -424,8 +502,11 @@ class _AddScreenState extends State<AddScreen> {
                               const SizedBox(height: 6),
                               Text(
                                 '$year · $format',
-                                style: theme.textTheme.bodySmall
-                                    ?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.6,
+                                  ),
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -443,7 +524,7 @@ class _AddScreenState extends State<AddScreen> {
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('닫기'),
-            )
+            ),
           ],
         );
       },
@@ -459,9 +540,9 @@ class _ImagePicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final album = viewModel.currentAlbum!;
     final theme = Theme.of(context);
-    // Unique tag for the Hero animation
-    final heroTag = 'album-cover-${album.id}';
-    
+    // Unique tag to avoid conflict with HomeScreen/DetailScreen heroes
+    final heroTag = 'add-album-cover-${album.id}';
+
     return Center(
       child: Hero(
         tag: heroTag,
@@ -469,7 +550,9 @@ class _ImagePicker extends StatelessWidget {
           onTap: () async {
             final imagePath = await viewModel.pickImage();
             if (imagePath != null) {
-              viewModel.updateCurrentAlbum(album.copyWith(imagePath: imagePath));
+              viewModel.updateCurrentAlbum(
+                album.copyWith(imagePath: imagePath),
+              );
             }
           },
           child: Container(
@@ -479,12 +562,24 @@ class _ImagePicker extends StatelessWidget {
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: theme.dividerColor, width: 2),
-              image: album.imagePath != null && File(album.imagePath!).existsSync()
-                  ? DecorationImage(image: FileImage(File(album.imagePath!)), fit: BoxFit.cover)
+              image:
+                  album.imagePath != null && File(album.imagePath!).existsSync()
+                  ? DecorationImage(
+                      image: FileImage(File(album.imagePath!)),
+                      fit: BoxFit.cover,
+                    )
                   : null,
             ),
-            child: (album.imagePath == null || !File(album.imagePath!).existsSync())
-                ? Center(child: Icon(Icons.add_a_photo_outlined, size: 40, color: theme.colorScheme.primary))
+            child:
+                (album.imagePath == null ||
+                    !File(album.imagePath!).existsSync())
+                ? Center(
+                    child: Icon(
+                      Icons.add_a_photo_outlined,
+                      size: 40,
+                      color: theme.colorScheme.primary,
+                    ),
+                  )
                 : null,
           ),
         ),
@@ -548,13 +643,19 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
 
   void _onTitleChanged() {
     if (widget.track.title != _titleController.text) {
-      widget.viewModel.updateTrack(widget.index, widget.track.copyWith(title: _titleController.text));
+      widget.viewModel.updateTrack(
+        widget.index,
+        widget.track.copyWith(title: _titleController.text),
+      );
     }
   }
 
   void _onTitleKrChanged() {
     if (widget.track.titleKr != _titleKrController.text) {
-      widget.viewModel.updateTrack(widget.index, widget.track.copyWith(titleKr: _titleKrController.text));
+      widget.viewModel.updateTrack(
+        widget.index,
+        widget.track.copyWith(titleKr: _titleKrController.text),
+      );
     }
   }
 
@@ -569,7 +670,7 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
         child: Card(
           key: widget.key,
           margin: const EdgeInsets.symmetric(vertical: 6),
-          color: theme.colorScheme.secondary.withOpacity(0.1),
+          color: theme.colorScheme.secondary.withValues(alpha: 0.1),
           child: Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -579,12 +680,20 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
                 Expanded(
                   child: TextFormField(
                     controller: _titleController,
-                    decoration: const InputDecoration(labelText: '디스크 제목', border: InputBorder.none),
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    decoration: const InputDecoration(
+                      labelText: '디스크 제목',
+                      border: InputBorder.none,
+                    ),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.remove_circle, color: Colors.redAccent),
+                  icon: const Icon(
+                    Icons.remove_circle,
+                    color: Colors.redAccent,
+                  ),
                   onPressed: () => widget.viewModel.removeTrack(widget.index),
                 ),
               ],
@@ -620,17 +729,26 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
                     children: [
                       TextFormField(
                         controller: _titleController,
-                        decoration: InputDecoration(labelText: '트랙 $trackNumberInDisc', border: InputBorder.none),
+                        decoration: InputDecoration(
+                          labelText: '트랙 $trackNumberInDisc',
+                          border: InputBorder.none,
+                        ),
                       ),
                       TextFormField(
                         controller: _titleKrController,
-                        decoration: InputDecoration(labelText: '트랙 $trackNumberInDisc (한국어)', border: InputBorder.none),
+                        decoration: InputDecoration(
+                          labelText: '트랙 $trackNumberInDisc (한국어)',
+                          border: InputBorder.none,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
+                  icon: const Icon(
+                    Icons.remove_circle_outline,
+                    color: Colors.redAccent,
+                  ),
                   onPressed: () => widget.viewModel.removeTrack(widget.index),
                 ),
               ],
@@ -644,6 +762,7 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
 
 class _FormControllers {
   final title = TextEditingController();
+  final titleKr = TextEditingController();
   final artist = TextEditingController();
   final date = TextEditingController();
   final desc = TextEditingController();
@@ -662,6 +781,7 @@ class _FormControllers {
     if (album == null) return;
 
     _updateText(title, album.title);
+    _updateText(titleKr, album.titleKr ?? '');
     _updateText(artist, album.artist);
     _updateText(date, album.releaseDate.format());
     _updateText(desc, album.description);
@@ -677,17 +797,36 @@ class _FormControllers {
     if (album == null) return;
 
     // The view model's tracks are already up-to-date. We only commit the other fields.
-    viewModel.updateCurrentAlbum(album.copyWith(
-      title: title.text,
-      artist: artist.text,
-      description: desc.text,
-      releaseDate: ReleaseDate.parse(date.text),
-      linkUrl: link.text,
-      labels: label.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-      formats: format.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-      genres: genre.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-      styles: style.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-    ));
+    viewModel.updateCurrentAlbum(
+      album.copyWith(
+        title: title.text,
+        titleKr: titleKr.text,
+        artist: artist.text,
+        description: desc.text,
+        releaseDate: ReleaseDate.parse(date.text),
+        linkUrl: link.text,
+        labels: label.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        formats: format.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        genres: genre.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        styles: style.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+      ),
+    );
   }
 
   void _updateText(TextEditingController controller, String text) {

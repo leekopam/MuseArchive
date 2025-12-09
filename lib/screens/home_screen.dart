@@ -26,7 +26,9 @@ class HomeScreen extends StatelessWidget {
         isLoading: viewModel.isLoading,
         child: Column(
           children: [
-            SizedBox(height: MediaQuery.of(context).padding.top + kToolbarHeight + 8),
+            SizedBox(
+              height: MediaQuery.of(context).padding.top + kToolbarHeight + 8,
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: CupertinoSlidingSegmentedControl<AlbumView>(
@@ -37,10 +39,18 @@ class HomeScreen extends StatelessWidget {
                   }
                 },
                 children: const {
-                  AlbumView.collection: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('컬렉션')),
-                  AlbumView.wishlist: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('위시리스트')),
+                  AlbumView.collection: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('컬렉션'),
+                  ),
+                  AlbumView.wishlist: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text('위시리스트'),
+                  ),
                 },
-                backgroundColor: theme.colorScheme.surface.withOpacity(0.8),
+                backgroundColor: theme.colorScheme.surface.withValues(
+                  alpha: 0.8,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -55,8 +65,12 @@ class HomeScreen extends StatelessWidget {
     final albums = viewModel.filteredAlbums;
     if (albums.isEmpty && !viewModel.isLoading) {
       return EmptyState(
-        icon: viewModel.currentView == AlbumView.collection ? Icons.music_note_outlined : Icons.favorite_border,
-        message: viewModel.currentView == AlbumView.collection ? '앨범이 없습니다.' : '위시리스트가 비었습니다.',
+        icon: viewModel.currentView == AlbumView.collection
+            ? Icons.music_note_outlined
+            : Icons.favorite_border,
+        message: viewModel.currentView == AlbumView.collection
+            ? '앨범이 없습니다.'
+            : '위시리스트가 비었습니다.',
         onAction: () => _navigateToAddScreen(context, viewModel.currentView),
         actionLabel: '앨범 추가하기',
       );
@@ -87,7 +101,7 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return ClipRRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -100,7 +114,9 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                   style: TextStyle(color: theme.colorScheme.onSurface),
                 )
               : const Text('MuseArchive'),
-          backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.85),
+          backgroundColor: theme.scaffoldBackgroundColor.withValues(
+            alpha: 0.85,
+          ),
           elevation: 0,
           actions: [
             IconButton(
@@ -110,7 +126,8 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
-              onPressed: () => _navigateToAddScreen(context, viewModel.currentView),
+              onPressed: () =>
+                  _navigateToAddScreen(context, viewModel.currentView),
               tooltip: '앨범 추가',
             ),
             _buildMoreMenu(context, viewModel),
@@ -131,15 +148,24 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             viewModel.toggleReorderMode();
             break;
           case 'all_songs':
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const AllSongsScreen()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AllSongsScreen()),
+            );
             break;
           case 'settings':
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            );
             break;
         }
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(value: 'sort', child: ListTile(leading: Icon(Icons.sort), title: Text('정렬'))),
+        const PopupMenuItem(
+          value: 'sort',
+          child: ListTile(leading: Icon(Icons.sort), title: Text('정렬')),
+        ),
         PopupMenuItem(
           value: 'reorder',
           child: ListTile(
@@ -148,8 +174,20 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(value: 'all_songs', child: ListTile(leading: Icon(Icons.queue_music), title: Text('모든 곡 목록'))),
-        const PopupMenuItem(value: 'settings', child: ListTile(leading: Icon(Icons.settings_outlined), title: Text('설정'))),
+        const PopupMenuItem(
+          value: 'all_songs',
+          child: ListTile(
+            leading: Icon(Icons.queue_music),
+            title: Text('모든 곡 목록'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'settings',
+          child: ListTile(
+            leading: Icon(Icons.settings_outlined),
+            title: Text('설정'),
+          ),
+        ),
       ],
     );
   }
@@ -193,11 +231,10 @@ class _AlbumCard extends StatelessWidget {
       child: Card(
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(12)), // Default card radius
-          side: BorderSide(
-            color: _getBorderColor(),
-            width: 2.5,
-          ),
+          borderRadius: const BorderRadius.all(
+            Radius.circular(12),
+          ), // Default card radius
+          side: BorderSide(color: _getBorderColor(), width: 2.5),
         ),
         child: Stack(
           fit: StackFit.expand,
@@ -212,7 +249,11 @@ class _AlbumCard extends StatelessWidget {
     );
   }
 
-  void _showMoveAlbumSheet(BuildContext context, Album album, HomeViewModel viewModel) {
+  void _showMoveAlbumSheet(
+    BuildContext context,
+    Album album,
+    HomeViewModel viewModel,
+  ) {
     final isWishlist = album.isWishlist;
     final theme = Theme.of(context);
 
@@ -224,7 +265,7 @@ class _AlbumCard extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
           child: Container(
             decoration: BoxDecoration(
-              color: theme.cardColor.withOpacity(0.85),
+              color: theme.cardColor.withValues(alpha: 0.85),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(20),
                 topRight: Radius.circular(20),
@@ -245,12 +286,16 @@ class _AlbumCard extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   ListTile(
-                    leading: Icon(isWishlist ? Icons.collections_bookmark_outlined : Icons.favorite_border),
+                    leading: Icon(
+                      isWishlist
+                          ? Icons.collections_bookmark_outlined
+                          : Icons.favorite_border,
+                    ),
                     title: Text(isWishlist ? '컬렉션으로 이동' : '위시리스트로 이동'),
                     onTap: () async {
                       Navigator.pop(builderContext);
                       await viewModel.toggleWishlistStatus(album.id);
-                      
+
                       if (context.mounted) {
                         final message = isWishlist
                             ? '앨범을 컬렉션으로 옮겼습니다.'
@@ -288,8 +333,14 @@ class _AlbumCard extends StatelessWidget {
       child: (album.imagePath != null && File(album.imagePath!).existsSync())
           ? Image.file(File(album.imagePath!), fit: BoxFit.cover)
           : Container(
-              color: Colors.grey.shade300,
-              child: const Center(child: Icon(Icons.album, size: 50, color: Colors.grey)),
+              color: const Color(0xFF1E1E2C),
+              child: const Center(
+                child: Icon(
+                  Icons.album,
+                  size: 50,
+                  color: Color(0xFFD4AF37),
+                ), // Metallic Gold
+              ),
             ),
     );
   }
@@ -306,7 +357,7 @@ class _AlbumCard extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildAlbumInfo(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     return Positioned(
@@ -318,13 +369,18 @@ class _AlbumCard extends StatelessWidget {
         children: [
           Text(
             album.title,
-            style: textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+            style: textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           Text(
             album.artist,
-            style: textTheme.bodyMedium?.copyWith(color: Colors.white.withOpacity(0.8)),
+            style: textTheme.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.8),
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -332,10 +388,10 @@ class _AlbumCard extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildFormatBadge() {
     const formatColors = {
-      'LP': Color(0xFF333333),
+      'LP': Color(0xFFD4AF37), // Metallic Gold for luxury look
       'CD': Color(0xFF4A90E2),
       'DVD': Color(0xFF7B1FA2),
       'Blu-ray': Color(0xFF007BFF),
@@ -346,7 +402,9 @@ class _AlbumCard extends StatelessWidget {
     Color? badgeColor;
 
     for (final format in formatPriority) {
-      if (album.formats.any((f) => f.toLowerCase().contains(format.toLowerCase()))) {
+      if (album.formats.any(
+        (f) => f.toLowerCase().contains(format.toLowerCase()),
+      )) {
         badgeLabel = format;
         badgeColor = formatColors[format];
         break;
@@ -356,7 +414,7 @@ class _AlbumCard extends StatelessWidget {
     if (badgeLabel == null) {
       return const SizedBox.shrink();
     }
-    
+
     return Positioned(
       top: 8,
       left: 8,
@@ -367,7 +425,7 @@ class _AlbumCard extends StatelessWidget {
 
 class _Badge extends StatelessWidget {
   const _Badge({required this.label, required this.color});
-  
+
   final String label;
   final Color color;
 
@@ -379,23 +437,31 @@ class _Badge extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(4),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 3)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 3),
+        ],
       ),
       child: Text(
         label,
-        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
 }
-
 
 // --- Helper methods that were in the original file, adapted for the new design ---
 
 void _navigateToAddScreen(BuildContext context, AlbumView currentView) {
   Navigator.push(
     context,
-    MaterialPageRoute(builder: (context) => AddScreen(isWishlist: currentView == AlbumView.wishlist)),
+    MaterialPageRoute(
+      builder: (context) =>
+          AddScreen(isWishlist: currentView == AlbumView.wishlist),
+    ),
   );
 }
 
@@ -409,22 +475,33 @@ void _showSortOptions(BuildContext context, HomeViewModel viewModel) async {
           children: [
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text('정렬 순서', style: Theme.of(context).textTheme.titleLarge),
+              child: Text(
+                '정렬 순서',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
             ),
             ...SortOption.values.map((option) {
               return ListTile(
                 leading: Icon(
                   _getSortOptionIcon(option),
-                  color: viewModel.sortOption == option ? Theme.of(context).colorScheme.primary : null,
+                  color: viewModel.sortOption == option
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
                 ),
                 title: Text(
                   _getSortOptionText(option),
                   style: TextStyle(
-                    fontWeight: viewModel.sortOption == option ? FontWeight.bold : null,
-                    color: viewModel.sortOption == option ? Theme.of(context).colorScheme.primary : null,
+                    fontWeight: viewModel.sortOption == option
+                        ? FontWeight.bold
+                        : null,
+                    color: viewModel.sortOption == option
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
                   ),
                 ),
-                trailing: viewModel.sortOption == option ? const Icon(Icons.check, color: Colors.blue) : null,
+                trailing: viewModel.sortOption == option
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
                 onTap: () => Navigator.pop(context, option),
               );
             }),
@@ -442,20 +519,30 @@ void _showSortOptions(BuildContext context, HomeViewModel viewModel) async {
 
 String _getSortOptionText(SortOption option) {
   switch (option) {
-    case SortOption.custom: return '사용자 지정';
-    case SortOption.artist: return '아티스트';
-    case SortOption.title: return '앨범명';
-    case SortOption.dateDescending: return '발매일 (최신순)';
-    case SortOption.dateAscending: return '발매일 (오래된순)';
+    case SortOption.custom:
+      return '사용자 지정';
+    case SortOption.artist:
+      return '아티스트';
+    case SortOption.title:
+      return '앨범명';
+    case SortOption.dateDescending:
+      return '발매일 (최신순)';
+    case SortOption.dateAscending:
+      return '발매일 (오래된순)';
   }
 }
 
 IconData _getSortOptionIcon(SortOption option) {
   switch (option) {
-    case SortOption.custom: return Icons.sort_by_alpha;
-    case SortOption.artist: return Icons.person_outline;
-    case SortOption.title: return Icons.album_outlined;
-    case SortOption.dateDescending: return Icons.arrow_downward;
-    case SortOption.dateAscending: return Icons.arrow_upward;
+    case SortOption.custom:
+      return Icons.sort_by_alpha;
+    case SortOption.artist:
+      return Icons.person_outline;
+    case SortOption.title:
+      return Icons.album_outlined;
+    case SortOption.dateDescending:
+      return Icons.arrow_downward;
+    case SortOption.dateAscending:
+      return Icons.arrow_upward;
   }
 }

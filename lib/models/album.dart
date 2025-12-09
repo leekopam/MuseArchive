@@ -5,6 +5,7 @@ import 'value_objects/release_date.dart';
 class Album {
   final String id;
   final String title;
+  final String? titleKr;
   final String artist;
   final String description;
   final List<String> labels;
@@ -22,6 +23,7 @@ class Album {
   Album({
     String? id,
     required this.title,
+    this.titleKr,
     required this.artist,
     this.description = '',
     List<String>? labels,
@@ -35,13 +37,13 @@ class Album {
     this.isLimited = false,
     this.isSpecial = false,
     this.isWishlist = false,
-  })  : id = id ?? const Uuid().v4(),
-        labels = labels ?? [],
-        formats = formats ?? [],
-        releaseDate = releaseDate ?? const ReleaseDate(null),
-        genres = genres ?? [],
-        styles = styles ?? [],
-        tracks = tracks ?? [];
+  }) : id = id ?? const Uuid().v4(),
+       labels = labels ?? [],
+       formats = formats ?? [],
+       releaseDate = releaseDate ?? const ReleaseDate(null),
+       genres = genres ?? [],
+       styles = styles ?? [],
+       tracks = tracks ?? [];
 
   String get label => labels.join(', ');
   String get format => formats.join(', ');
@@ -53,6 +55,7 @@ class Album {
     return {
       'id': id,
       'title': title,
+      'titleKr': titleKr,
       'artist': artist,
       'description': description,
       'labels': labels,
@@ -85,6 +88,7 @@ class Album {
     return Album(
       id: map['id']?.toString(),
       title: map['title'] ?? '',
+      titleKr: map['titleKr'],
       artist: map['artist'] ?? '',
       description: map['description'] ?? '',
       labels: List<String>.from(map['labels'] ?? []),
@@ -104,6 +108,7 @@ class Album {
   Album copyWith({
     String? id,
     String? title,
+    String? titleKr,
     String? artist,
     String? description,
     List<String>? labels,
@@ -121,6 +126,7 @@ class Album {
     return Album(
       id: id ?? this.id,
       title: title ?? this.title,
+      titleKr: titleKr ?? this.titleKr,
       artist: artist ?? this.artist,
       description: description ?? this.description,
       labels: labels ?? this.labels,
