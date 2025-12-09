@@ -12,11 +12,7 @@ class AlbumFormViewModel extends ChangeNotifier {
   final DiscogsService _discogsService;
   final OcrService _ocrService;
 
-  AlbumFormViewModel(
-    this._repository,
-    this._discogsService,
-    this._ocrService,
-  );
+  AlbumFormViewModel(this._repository, this._discogsService, this._ocrService);
 
   Album? _currentAlbum;
   bool _isLoading = false;
@@ -90,7 +86,8 @@ class AlbumFormViewModel extends ChangeNotifier {
     try {
       final album = await _discogsService.fetchAlbumByBarcode(barcode);
       if (album != null) {
-        _currentAlbum = _currentAlbum?.copyWith(
+        _currentAlbum =
+            _currentAlbum?.copyWith(
               title: album.title,
               artist: album.artist,
               releaseDate: album.releaseDate,
@@ -115,15 +112,19 @@ class AlbumFormViewModel extends ChangeNotifier {
     }
   }
 
-  Future<List<Map<String, dynamic>>> searchByTitleArtist(
-      {String? artist, required String title}) async {
+  Future<List<Map<String, dynamic>>> searchByTitleArtist({
+    String? artist,
+    String? title,
+  }) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
       final results = await _discogsService.searchAlbumsByTitleArtist(
-          artist: artist, title: title);
+        artist: artist,
+        title: title,
+      );
       return results;
     } catch (e) {
       _errorMessage = '검색 중 오류가 발생했습니다: $e';
@@ -145,7 +146,9 @@ class AlbumFormViewModel extends ChangeNotifier {
         _currentAlbum = album.copyWith(
           id: _currentAlbum?.id,
           isWishlist: _currentAlbum?.isWishlist,
-          description: (album.description.isEmpty && _currentAlbum?.description.isNotEmpty == true)
+          description:
+              (album.description.isEmpty &&
+                  _currentAlbum?.description.isNotEmpty == true)
               ? _currentAlbum!.description
               : album.description,
         );
@@ -214,11 +217,15 @@ class AlbumFormViewModel extends ChangeNotifier {
   }
 
   void updateTrack(int index, Track track) {
-    if (_currentAlbum == null || index < 0 || index >= _currentAlbum!.tracks.length) return;
+    if (_currentAlbum == null ||
+        index < 0 ||
+        index >= _currentAlbum!.tracks.length) {
+      return;
+    }
 
     final updatedTracks = List<Track>.from(_currentAlbum!.tracks);
     updatedTracks[index] = track;
-    
+
     _currentAlbum = _currentAlbum!.copyWith(tracks: updatedTracks);
     _hasUnsavedChanges = true;
     notifyListeners();

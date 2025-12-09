@@ -61,7 +61,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     Color? badgeColor;
 
     for (final format in formatPriority) {
-      if (album.formats.any((f) => f.toLowerCase().contains(format.toLowerCase()))) {
+      if (album.formats.any(
+        (f) => f.toLowerCase().contains(format.toLowerCase()),
+      )) {
         badgeLabel = format;
         badgeColor = formatColors[format];
         break;
@@ -80,11 +82,20 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
         decoration: BoxDecoration(
           color: badgeColor,
           borderRadius: BorderRadius.circular(4),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 3)],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 3,
+            ),
+          ],
         ),
         child: Text(
           badgeLabel,
-          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
@@ -102,10 +113,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       appBar: AppBar(
         title: Text(
           widget.artistName,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: textColor,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
         ),
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -114,8 +122,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _artistAlbums.isEmpty
-              ? _buildEmptyState(isDark)
-              : _buildAlbumList(isDark, cardColor, textColor),
+          ? _buildEmptyState(isDark)
+          : _buildAlbumList(isDark, cardColor, textColor),
     );
   }
 
@@ -168,9 +176,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => DetailScreen(
-                          album: album,
-                        ),
+                        builder: (context) => DetailScreen(album: album),
                       ),
                     );
                   },
@@ -187,7 +193,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                           color: isDark ? Colors.grey[800] : Colors.grey[200],
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: album.imagePath != null &&
+                        child:
+                            album.imagePath != null &&
                                 File(album.imagePath!).existsSync()
                             ? ClipRRect(
                                 borderRadius: BorderRadius.circular(8),

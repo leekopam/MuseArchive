@@ -32,9 +32,10 @@ class DiscogsService {
       return null;
     }
 
-    final uri = Uri.parse('$_baseUrl$endpoint')
-        .replace(queryParameters: queryParams);
-    
+    final uri = Uri.parse(
+      '$_baseUrl$endpoint',
+    ).replace(queryParameters: queryParams);
+
     final headers = {
       'User-Agent': 'MuseArchiveApp/1.0',
       'Authorization': 'Discogs token=$token',
@@ -45,32 +46,48 @@ class DiscogsService {
 
   Future<List<Map<String, dynamic>>> searchAlbumsByTitleArtist({
     String? artist,
-    required String title,
+    String? title,
   }) async {
     try {
-      final queryParams = {
-        'type': 'release',
-        'per_page': '20',
-        'release_title': title,
-      };
+      final queryParams = {'type': 'release', 'per_page': '20'};
+
+      final queryList = <String>[];
       if (artist != null && artist.isNotEmpty) {
-        queryParams['artist'] = artist;
+        queryList.add(artist);
+      }
+      if (title != null && title.isNotEmpty) {
+        queryList.add(title);
       }
 
-      final response = await _authenticatedGet('/database/search', queryParams: queryParams);
+      if (queryList.isEmpty) {
+        return [];
+      }
+
+      // 'q' 파라미터를 사용하여 통합 검색 수행 (더 유연한 검색 결과 제공)
+      queryParams['q'] = queryList.join(' ');
+
+      final response = await _authenticatedGet(
+        '/database/search',
+        queryParams: queryParams,
+      );
 
       if (response != null && response.statusCode == 200) {
         final searchData = jsonDecode(response.body);
         final results = searchData['results'] as List;
-        
-        return results.map((result) => {
-          'id': result['id'],
-          'title': result['title'] ?? '',
-          'artist': result['artist'] ?? '', // Add artist to the result map
-          'year': result['year']?.toString() ?? '',
-          'thumb': result['thumb'] ?? '',
-          'format': (result['format'] as List?)?.join(', ') ?? '',
-        }).toList();
+
+        return results
+            .map(
+              (result) => {
+                'id': result['id'],
+                'title': result['title'] ?? '',
+                'artist':
+                    result['artist'] ?? '', // Add artist to the result map
+                'year': result['year']?.toString() ?? '',
+                'thumb': result['thumb'] ?? '',
+                'format': (result['format'] as List?)?.join(', ') ?? '',
+              },
+            )
+            .toList();
       }
     } catch (e) {
       debugPrint("Discogs 검색 오류: $e");
@@ -84,7 +101,8 @@ class DiscogsService {
       final rawData = await _fetchRawAlbumDetails(releaseId);
       if (rawData != null) {
         String? localImagePath;
-        if (rawData['images'] != null && (rawData['images'] as List).isNotEmpty) {
+        if (rawData['images'] != null &&
+            (rawData['images'] as List).isNotEmpty) {
           final imageUrl = rawData['images'][0]['resource_url'];
           if (imageUrl != null) {
             localImagePath = await _downloadAndSaveImage(
@@ -104,10 +122,10 @@ class DiscogsService {
 
   Future<Album?> fetchAlbumByBarcode(String barcode) async {
     try {
-      final response = await _authenticatedGet('/database/search', queryParams: {
-        'barcode': barcode,
-        'type': 'release',
-      });
+      final response = await _authenticatedGet(
+        '/database/search',
+        queryParams: {'barcode': barcode, 'type': 'release'},
+      );
 
       if (response != null && response.statusCode == 200) {
         final searchData = jsonDecode(response.body);
@@ -119,7 +137,8 @@ class DiscogsService {
 
           if (rawData != null) {
             String? localImagePath;
-            if (rawData['images'] != null && (rawData['images'] as List).isNotEmpty) {
+            if (rawData['images'] != null &&
+                (rawData['images'] as List).isNotEmpty) {
               final imageUrl = rawData['images'][0]['resource_url'];
               if (imageUrl != null) {
                 localImagePath = await _downloadAndSaveImage(
@@ -195,11 +214,13 @@ class DiscogsService {
     List<Track> tracks = [];
     if (data['tracklist'] != null) {
       for (var track in data['tracklist']) {
-        tracks.add(Track(
-          title: track['title'] ?? '',
-          titleKr: '',
-          isHeader: track['type_'] == 'heading',
-        ));
+        tracks.add(
+          Track(
+            title: track['title'] ?? '',
+            titleKr: '',
+            isHeader: track['type_'] == 'heading',
+          ),
+        );
       }
     }
 
@@ -211,15 +232,29 @@ class DiscogsService {
       artist: artist,
       description: data['notes'] ?? '',
       labels: data['labels'] != null && (data['labels'] as List).isNotEmpty
-          ? [data['labels'][0]['name']]
+          ? (data['labels'] as List).map<String>((l) {
+              String name = l['name'] ?? '';
+              String catno = l['catno'] ?? '';
+              if (name.isNotEmpty && catno.isNotEmpty) {
+                return '$name - $catno';
+              }
+              return name.isNotEmpty ? name : catno;
+            }).toList()
           : [],
       imagePath: localImagePath,
       formats: data['formats'] != null && (data['formats'] as List).isNotEmpty
-          ? [(data['formats'][0]['descriptions'] as List?)?.join(', ') ?? 
-             data['formats'][0]['name']]
+          ? (data['formats'] as List).map<String>((f) {
+              final name = f['name'] ?? '';
+              final descriptions =
+                  (f['descriptions'] as List?)?.join(', ') ?? '';
+              if (name.isNotEmpty && descriptions.isNotEmpty) {
+                return '$name, $descriptions';
+              }
+              return name.isNotEmpty ? name : descriptions;
+            }).toList()
           : ['CD'],
       releaseDate: ReleaseDate.parse(releaseDate),
-      genres: data['genres'] != null 
+      genres: data['genres'] != null
           ? (data['genres'] as List).map((e) => e.toString()).toList()
           : [],
       styles: data['styles'] != null

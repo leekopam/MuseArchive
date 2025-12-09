@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -40,10 +39,7 @@ class _DetailScreenState extends State<DetailScreen> {
       },
       child: Scaffold(
         body: CustomScrollView(
-          slivers: [
-            _buildSliverAppBar(context),
-            _buildContent(context),
-          ],
+          slivers: [_buildSliverAppBar(context), _buildContent(context)],
         ),
       ),
     );
@@ -75,32 +71,71 @@ class _DetailScreenState extends State<DetailScreen> {
       ],
       flexibleSpace: FlexibleSpaceBar(
         stretchModes: const [StretchMode.zoomBackground],
-        title: Text(
-          _currentAlbum.title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            color: Theme.of(context).colorScheme.onSurface
-          ),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _currentAlbum.titleKr != null && _currentAlbum.titleKr!.isNotEmpty
+                  ? _currentAlbum.titleKr!
+                  : _currentAlbum.title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                fontFamily: '.SF Pro Display',
+                letterSpacing: -0.5,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (_currentAlbum.titleKr != null &&
+                _currentAlbum.titleKr!.isNotEmpty)
+              Text(
+                _currentAlbum.title,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: '.SF Pro Text',
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
         ),
         centerTitle: false,
-        titlePadding: const EdgeInsets.only(left: 56, right: 56, bottom: 16),
+        titlePadding: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
         background: Stack(
           fit: StackFit.expand,
           children: [
             Hero(
-              tag: _currentAlbum.id,
-              child: _currentAlbum.imagePath != null && File(_currentAlbum.imagePath!).existsSync()
+              tag: 'album-cover-${_currentAlbum.id}',
+              child:
+                  _currentAlbum.imagePath != null &&
+                      File(_currentAlbum.imagePath!).existsSync()
                   ? Image.file(
                       File(_currentAlbum.imagePath!),
                       fit: BoxFit.cover,
                     )
-                  : const Center(child: Icon(Icons.album, size: 100, color: Colors.grey)),
+                  : Center(
+                      child: Icon(
+                        Icons.album,
+                        size: 100,
+                        color: const Color(0xFFD4AF37), // Metallic Gold
+                      ),
+                    ),
             ),
             DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.7),
+                  ],
                   stops: const [0.5, 1.0],
                 ),
               ),
@@ -144,10 +179,18 @@ class _DetailScreenState extends State<DetailScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ArtistDetailScreen(artistName: _currentAlbum.artist))),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  ArtistDetailScreen(artistName: _currentAlbum.artist),
+            ),
+          ),
           child: Text(
             _currentAlbum.artist,
-            style: textTheme.displaySmall?.copyWith(color: Theme.of(context).colorScheme.primary),
+            style: textTheme.displaySmall?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -163,7 +206,7 @@ class _DetailScreenState extends State<DetailScreen> {
       ],
     );
   }
-  
+
   Widget _buildInfoSection(BuildContext context) {
     return _buildSectionContainer(
       context,
@@ -211,13 +254,25 @@ class _DetailScreenState extends State<DetailScreen> {
               if (track.isHeader) {
                 return Padding(
                   padding: const EdgeInsets.only(top: 16, bottom: 8),
-                  child: Text(track.title, style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  child: Text(
+                    track.title,
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 );
               }
               return ListTile(
-                leading: Text('${trackNumber++}.', style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface.withOpacity(0.6))),
+                leading: Text(
+                  '${trackNumber++}.',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
                 title: Text(track.title),
-                subtitle: (track.titleKr != null && track.titleKr!.isNotEmpty) ? Text(track.titleKr!) : null,
+                subtitle: (track.titleKr != null && track.titleKr!.isNotEmpty)
+                    ? Text(track.titleKr!)
+                    : null,
                 dense: true,
               );
             }).toList(),
@@ -226,7 +281,7 @@ class _DetailScreenState extends State<DetailScreen> {
       ],
     );
   }
-  
+
   Widget _buildSectionContainer(BuildContext context, {required Widget child}) {
     return Container(
       width: double.infinity,
@@ -242,7 +297,7 @@ class _DetailScreenState extends State<DetailScreen> {
   Widget _buildInfoRow(String label, String value, {bool isLast = false}) {
     if (value.isEmpty) return const SizedBox.shrink();
     final textTheme = Theme.of(context).textTheme;
-    
+
     return Padding(
       padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
       child: Row(
@@ -250,7 +305,12 @@ class _DetailScreenState extends State<DetailScreen> {
         children: [
           SizedBox(
             width: 80,
-            child: Text(label, style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+            child: Text(
+              label,
+              style: textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(child: Text(value, style: textTheme.bodyMedium)),
@@ -262,7 +322,9 @@ class _DetailScreenState extends State<DetailScreen> {
   // --- Actions ---
 
   Future<void> _toggleWishlistStatus() async {
-    final newAlbum = _currentAlbum.copyWith(isWishlist: !_currentAlbum.isWishlist);
+    final newAlbum = _currentAlbum.copyWith(
+      isWishlist: !_currentAlbum.isWishlist,
+    );
     try {
       await _repository.update(_currentAlbum.id, newAlbum);
       setState(() {
