@@ -84,7 +84,8 @@ class AlbumRepository implements IAlbumRepository {
     }
 
     final oldAlbum = Album.fromMap(oldAlbumMap);
-    var albumToSave = album; // Use a new variable to avoid modifying the parameter
+    var albumToSave =
+        album; // Use a new variable to avoid modifying the parameter
 
     if (oldAlbum.imagePath != album.imagePath && album.imagePath != null) {
       try {
@@ -147,8 +148,7 @@ class AlbumRepository implements IAlbumRepository {
         if (await file.exists()) {
           await file.delete();
         }
-      }
- catch (e) {
+      } catch (e) {
         debugPrint("이미지 삭제 실패: $e");
       }
     }
@@ -159,9 +159,10 @@ class AlbumRepository implements IAlbumRepository {
 
   @override
   Future<void> reorder(int oldIndex, int newIndex) async {
-    if (oldIndex < newIndex) {
-      newIndex -= 1;
-    }
+    // NOTE: Removed index adjustment to align with ViewModel logic and fix "Left to Right" bug.
+    // if (oldIndex < newIndex) {
+    //   newIndex -= 1;
+    // }
 
     final album = Album.fromMap(box.getAt(oldIndex));
     await box.deleteAt(oldIndex);
@@ -176,8 +177,11 @@ class AlbumRepository implements IAlbumRepository {
     }
   }
 
-  Future<void> _updateArtistAlbums(String artistName, String albumId,
-      {required bool isAdding}) async {
+  Future<void> _updateArtistAlbums(
+    String artistName,
+    String albumId, {
+    required bool isAdding,
+  }) async {
     try {
       dynamic artistKey;
       for (var key in artistBox.keys) {
@@ -257,8 +261,10 @@ class AlbumRepository implements IAlbumRepository {
   @override
   List<String> getSmartArtistSuggestions(String query) {
     final lowerQuery = query.toLowerCase();
-    final allArtists =
-        box.values.map((e) => Album.fromMap(e).artist).toSet().toList();
+    final allArtists = box.values
+        .map((e) => Album.fromMap(e).artist)
+        .toSet()
+        .toList();
 
     allArtists.sort((a, b) {
       final aLower = a.toLowerCase();
@@ -301,7 +307,8 @@ class AlbumRepository implements IAlbumRepository {
     try {
       final tempDir = await getTemporaryDirectory();
       final backupDir = Directory(
-          '${tempDir.path}/backup_${DateTime.now().millisecondsSinceEpoch}');
+        '${tempDir.path}/backup_${DateTime.now().millisecondsSinceEpoch}',
+      );
       await backupDir.create();
 
       final albums = box.values.map((e) => Album.fromMap(e)).toList();
@@ -346,10 +353,7 @@ class AlbumRepository implements IAlbumRepository {
       if (backupPath == null) return false;
 
       await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(backupPath)],
-          subject: 'MuseArchive 백업',
-        ),
+        ShareParams(files: [XFile(backupPath)], subject: 'MuseArchive 백업'),
       );
 
       return true;
@@ -395,7 +399,8 @@ class AlbumRepository implements IAlbumRepository {
 
       final tempDir = await getTemporaryDirectory();
       final extractDir = Directory(
-          '${tempDir.path}/restore_${DateTime.now().millisecondsSinceEpoch}');
+        '${tempDir.path}/restore_${DateTime.now().millisecondsSinceEpoch}',
+      );
       await extractDir.create();
 
       // decodeBuffer 대신 decode 사용

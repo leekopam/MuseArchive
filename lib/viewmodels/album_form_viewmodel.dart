@@ -6,13 +6,20 @@ import '../models/value_objects/release_date.dart';
 import '../services/i_album_repository.dart';
 import '../services/discogs_service.dart';
 import '../services/ocr_service.dart';
+import '../services/spotify_service.dart';
 
 class AlbumFormViewModel extends ChangeNotifier {
   final IAlbumRepository _repository;
   final DiscogsService _discogsService;
   final OcrService _ocrService;
+  final SpotifyService _spotifyService;
 
-  AlbumFormViewModel(this._repository, this._discogsService, this._ocrService);
+  AlbumFormViewModel(
+    this._repository,
+    this._discogsService,
+    this._ocrService,
+    this._spotifyService,
+  );
 
   Album? _currentAlbum;
   bool _isLoading = false;
@@ -23,6 +30,72 @@ class AlbumFormViewModel extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get hasUnsavedChanges => _hasUnsavedChanges;
+
+  // ... (Initialization methods remain same)
+
+  // ... (Other methods)
+
+  Future<void> updateCoverFromUrl(String imageUrl) async {
+    await updateFromSpotify(imageUrl: imageUrl);
+  }
+
+  Future<void> updateFromSpotify({
+    required String imageUrl,
+    String? linkUrl,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      // Create a temporary file path
+      final fileName = 'cover_${DateTime.now().millisecondsSinceEpoch}';
+      final savedPath = await _discogsService.downloadAndSaveImage(
+        imageUrl,
+        fileName,
+      ); // Reusing DiscogsService downloader for now or move to utilities
+
+      if (savedPath != null) {
+        _currentAlbum = _currentAlbum?.copyWith(
+          imagePath: savedPath,
+          linkUrl: (linkUrl != null && linkUrl.isNotEmpty)
+              ? linkUrl
+              : _currentAlbum?.linkUrl,
+        );
+        _hasUnsavedChanges = true;
+      } else {
+        _errorMessage = '이미지를 저장할 수 없습니다.';
+      }
+    } catch (e) {
+      _errorMessage = '이미지 업데이트 실패: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<Map<String, String>>> searchSpotifyForConnect(
+    String query,
+  ) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      return await _spotifyService.searchAlbums(query);
+    } catch (e) {
+      _errorMessage = 'Spotify 검색 실패: $e';
+      return [];
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Exposed for UI to check if we can use Spotify
+  Future<bool> isSpotifyConfigured() async {
+    // This check could actally be in SpotifyService but we can do a quick check via VM
+    // Or just try specific call. For now, assuming UI handles keys check or service handles it.
+    return true;
+  }
+
+  // ... (Rest existing methods)
 
   void initialize(Album? albumToEdit, bool isWishlist) {
     if (albumToEdit != null) {

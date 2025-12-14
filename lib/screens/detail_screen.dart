@@ -352,11 +352,12 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   Future<void> _editAlbum() async {
-    final result = await Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => AddScreen(albumToEdit: _currentAlbum)),
     );
-    if (result == true && mounted) {
+    // Always reload because AddScreen uses auto-save and may not return a specific result on back press.
+    if (mounted) {
       _albumWasModified = true;
       final updatedAlbums = await _repository.getAll();
       setState(() {

@@ -9,10 +9,12 @@ class OcrService {
   Future<String> extractTextFromImage(String imagePath) async {
     try {
       final inputImage = InputImage.fromFilePath(imagePath);
-      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final textRecognizer = TextRecognizer(
+        script: TextRecognitionScript.korean,
+      );
       final recognizedText = await textRecognizer.processImage(inputImage);
       await textRecognizer.close();
-      
+
       return recognizedText.text;
     } catch (e) {
       debugPrint('OCR 오류: $e');
@@ -21,12 +23,13 @@ class OcrService {
   }
 
   String parseAlbumInfo(String text) {
-    final lines = text.split('\n')
+    final lines = text
+        .split('\n')
         .where((line) => line.trim().isNotEmpty)
         .toList();
-    
+
     if (lines.isEmpty) return '';
-    
+
     return lines.take(3).join(' ').trim();
   }
 }

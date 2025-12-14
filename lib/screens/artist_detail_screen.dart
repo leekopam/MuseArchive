@@ -50,53 +50,56 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
   Widget _buildFormatBadge(Album album) {
     const formatColors = {
-      'LP': Color(0xFF333333),
-      'CD': Color(0xFF4A90E2),
-      'DVD': Color(0xFF7B1FA2),
-      'Blu-ray': Color(0xFF007BFF),
+      'LP': Color(0xFFD4AF37),
+      'CD': Color(0xFF607D8B),
+      'DVD': Color(0xFF8E24AA),
+      'Blu-ray': Color(0xFF2962FF),
     };
     final formatPriority = ['LP', 'CD', 'DVD', 'Blu-ray'];
 
-    String? badgeLabel;
-    Color? badgeColor;
+    List<Widget> badges = [];
 
     for (final format in formatPriority) {
       if (album.formats.any(
         (f) => f.toLowerCase().contains(format.toLowerCase()),
       )) {
-        badgeLabel = format;
-        badgeColor = formatColors[format];
-        break;
+        badges.add(
+          Container(
+            margin: const EdgeInsets.only(bottom: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              color: formatColors[format],
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 3,
+                ),
+              ],
+            ),
+            child: Text(
+              format,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
       }
     }
 
-    if (badgeLabel == null) {
+    if (badges.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Positioned(
       top: 4,
       left: 4,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        decoration: BoxDecoration(
-          color: badgeColor,
-          borderRadius: BorderRadius.circular(4),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 3,
-            ),
-          ],
-        ),
-        child: Text(
-          badgeLabel,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 9,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: badges,
       ),
     );
   }

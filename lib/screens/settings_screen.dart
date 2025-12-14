@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/album_repository.dart';
+import '../services/discogs_service.dart';
+import '../services/spotify_service.dart';
 import '../services/theme_manager.dart';
 import '../widgets/common_widgets.dart';
 
@@ -12,6 +14,11 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _apiTokenController = TextEditingController();
+  final TextEditingController _spotifyClientIdController =
+      TextEditingController();
+  final TextEditingController _spotifyClientSecretController =
+      TextEditingController();
+
   final AlbumRepository _repository = AlbumRepository();
   bool _isLoading = false;
   bool _isDarkMode = false;
@@ -19,7 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadApiToken();
+    _loadCredentials();
     _isDarkMode = themeNotifier.value == ThemeMode.dark;
     themeNotifier.addListener(_onThemeChanged);
   }
@@ -27,6 +34,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _apiTokenController.dispose();
+    _spotifyClientIdController.dispose();
+    _spotifyClientSecretController.dispose();
     themeNotifier.removeListener(_onThemeChanged);
     super.dispose();
   }
@@ -43,11 +52,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     saveTheme(value);
   }
 
-  Future<void> _loadApiToken() async {
+  Future<void> _loadCredentials() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('discogs_api_token') ?? '';
+    final discogsToken = prefs.getString('discogs_api_token') ?? '';
+    final spotifyId = prefs.getString('spotify_client_id') ?? '';
+    final spotifySecret = prefs.getString('spotify_client_secret') ?? '';
+
     setState(() {
-      _apiTokenController.text = token;
+      _apiTokenController.text = discogsToken;
+      _spotifyClientIdController.text = spotifyId;
+      _spotifyClientSecretController.text = spotifySecret;
     });
   }
 
@@ -57,12 +71,95 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('discogs_api_token', _apiTokenController.text);
       if (mounted) {
-        SuccessSnackBar.show(context, 'API 토큰이 저장되었습니다.');
+        SuccessSnackBar.show(context, 'Discogs 토큰이 저장되었습니다.');
       }
     } catch (e) {
       if (mounted) {
         ErrorSnackBar.show(context, '저장 실패: $e');
       }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveSpotifyCredentials() async {
+    setState(() => _isLoading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'spotify_client_id',
+        _spotifyClientIdController.text,
+      );
+      await prefs.setString(
+        'spotify_client_secret',
+        _spotifyClientSecretController.text,
+      );
+      if (mounted) {
+        SuccessSnackBar.show(context, 'Spotify 키가 저장되었습니다.');
+      }
+    } catch (e) {
+      if (mounted) {
+        ErrorSnackBar.show(context, '저장 실패: $e');
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _testDiscogsConnection() async {
+    setState(() => _isLoading = true);
+    try {
+      // Ensure we use the latest token from input if user didn't save?
+      // Ideally we save first. But let's assume user saved.
+      // Or we can temporarily set it in service? Service reads from SharedPrefs.
+      // So we must SAVE first or ensure SharedPrefs is updated.
+      // The button flow: Save -> Test OR just Test (which implies using what's in fields?)
+      // To strictly test what's in Input, we should save it first or pass it.
+      // But Service reads from Prefs. Let's auto-save or warn?
+      // Let's just assume we test what is stored.
+      // Better: Update Prefs with current input before testing.
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('discogs_api_token', _apiTokenController.text);
+
+      final success = await DiscogsService().testConnection();
+      if (mounted) {
+        if (success) {
+          SuccessSnackBar.show(context, 'Discogs 연결 성공!');
+        } else {
+          ErrorSnackBar.show(context, 'Discogs 연결 실패. 토큰을 확인하세요.');
+        }
+      }
+    } catch (e) {
+      if (mounted) ErrorSnackBar.show(context, '테스트 오류: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _testSpotifyConnection() async {
+    setState(() => _isLoading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'spotify_client_id',
+        _spotifyClientIdController.text,
+      );
+      await prefs.setString(
+        'spotify_client_secret',
+        _spotifyClientSecretController.text,
+      );
+
+      final success = await SpotifyService().testConnection();
+      if (mounted) {
+        if (success) {
+          SuccessSnackBar.show(context, 'Spotify 연결 성공!');
+        } else {
+          ErrorSnackBar.show(context, 'Spotify 연결 실패. 키를 확인하세요.');
+        }
+      }
+    } catch (e) {
+      if (mounted) ErrorSnackBar.show(context, '테스트 오류: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -130,10 +227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         title: Text(
           '설정',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: textColor,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
         ),
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -155,10 +249,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
             Text(
               'Discogs API 토큰을 입력하여 앨범 정보를 검색할 수 있습니다.',
-              style: TextStyle(
-                fontSize: 14,
-                color: subTextColor,
-              ),
+              style: TextStyle(fontSize: 14, color: subTextColor),
             ),
             const SizedBox(height: 16),
             Card(
@@ -175,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     TextField(
                       controller: _apiTokenController,
                       decoration: InputDecoration(
-                        labelText: 'API Token',
+                        labelText: 'Discogs API Token',
                         hintText: '토큰을 입력하세요',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -208,10 +299,102 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _saveApiToken,
-                        icon: const Icon(Icons.save),
-                        label: const Text('저장'),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _testDiscogsConnection,
+                              child: const Text('연결 확인'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _saveApiToken,
+                              icon: const Icon(Icons.save),
+                              label: const Text('저장'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              'Spotify API',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Spotify Client ID와 Secret을 입력하여 고화질 앨범 아트를 검색할 수 있습니다.',
+              style: TextStyle(fontSize: 14, color: subTextColor),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              color: cardColor,
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _spotifyClientIdController,
+                      decoration: InputDecoration(
+                        labelText: 'Client ID',
+                        hintText: 'Client ID 입력',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _spotifyClientSecretController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: 'Client Secret',
+                        hintText: 'Client Secret 입력',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _testSpotifyConnection,
+                              child: const Text('연결 확인'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _saveSpotifyCredentials,
+                              icon: const Icon(Icons.save),
+                              label: const Text('저장'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(
+                                  0xFF1DB954,
+                                ), // Spotify Green
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -230,10 +413,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
             Text(
               '앨범 데이터를 백업하거나 복원할 수 있습니다.',
-              style: TextStyle(
-                fontSize: 14,
-                color: subTextColor,
-              ),
+              style: TextStyle(fontSize: 14, color: subTextColor),
             ),
             const SizedBox(height: 16),
             Card(
@@ -325,18 +505,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Version 1.0.0',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: subTextColor,
-                      ),
+                      style: TextStyle(fontSize: 14, color: subTextColor),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       '나만의 앨범 컬렉션을 관리하세요.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: subTextColor,
-                      ),
+                      style: TextStyle(fontSize: 14, color: subTextColor),
                     ),
                   ],
                 ),

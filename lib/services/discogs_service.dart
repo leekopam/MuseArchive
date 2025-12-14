@@ -44,6 +44,16 @@ class DiscogsService {
     return await http.get(uri, headers: headers);
   }
 
+  Future<bool> testConnection() async {
+    try {
+      final response = await _authenticatedGet('/oauth/identity');
+      return response != null && response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Discogs 연결 테스트 실패: $e");
+      return false;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> searchAlbumsByTitleArtist({
     String? artist,
     String? title,
@@ -105,7 +115,7 @@ class DiscogsService {
             (rawData['images'] as List).isNotEmpty) {
           final imageUrl = rawData['images'][0]['resource_url'];
           if (imageUrl != null) {
-            localImagePath = await _downloadAndSaveImage(
+            localImagePath = await downloadAndSaveImage(
               imageUrl,
               releaseId.toString(),
             );
@@ -141,7 +151,7 @@ class DiscogsService {
                 (rawData['images'] as List).isNotEmpty) {
               final imageUrl = rawData['images'][0]['resource_url'];
               if (imageUrl != null) {
-                localImagePath = await _downloadAndSaveImage(
+                localImagePath = await downloadAndSaveImage(
                   imageUrl,
                   releaseId.toString(),
                 );
@@ -159,7 +169,7 @@ class DiscogsService {
     return null;
   }
 
-  Future<String?> _downloadAndSaveImage(
+  Future<String?> downloadAndSaveImage(
     String imageUrl,
     String fileNameBase,
   ) async {
@@ -227,6 +237,22 @@ class DiscogsService {
     String releaseDate = data['released'] ?? '';
     releaseDate = releaseDate.replaceAll('-', '.');
 
+    final formatList =
+        data['formats'] != null && (data['formats'] as List).isNotEmpty
+        ? (data['formats'] as List).map<String>((f) {
+            final name = f['name'] ?? '';
+            final descriptions = (f['descriptions'] as List?)?.join(', ') ?? '';
+            if (name.isNotEmpty && descriptions.isNotEmpty) {
+              return '$name, $descriptions';
+            }
+            return name.isNotEmpty ? name : descriptions;
+          }).toList()
+        : ['CD'];
+
+    final isLimited = formatList.any(
+      (f) => f.toLowerCase().contains('limited edition'),
+    );
+
     return Album(
       title: data['title'] ?? '',
       artist: artist,
@@ -242,17 +268,7 @@ class DiscogsService {
             }).toList()
           : [],
       imagePath: localImagePath,
-      formats: data['formats'] != null && (data['formats'] as List).isNotEmpty
-          ? (data['formats'] as List).map<String>((f) {
-              final name = f['name'] ?? '';
-              final descriptions =
-                  (f['descriptions'] as List?)?.join(', ') ?? '';
-              if (name.isNotEmpty && descriptions.isNotEmpty) {
-                return '$name, $descriptions';
-              }
-              return name.isNotEmpty ? name : descriptions;
-            }).toList()
-          : ['CD'],
+      formats: formatList,
       releaseDate: ReleaseDate.parse(releaseDate),
       genres: data['genres'] != null
           ? (data['genres'] as List).map((e) => e.toString()).toList()
@@ -262,6 +278,7 @@ class DiscogsService {
           : [],
       tracks: tracks,
       linkUrl: null,
+      isLimited: isLimited,
     );
   }
 }
