@@ -1,0 +1,52 @@
+[
+  {
+    "id": "TC001",
+    "title": "add album functionality",
+    "description": "Verify that a user can successfully add a new album with all required fields including title and artist, and optional fields such as description, memo, and images. Ensure the album is persisted locally and appears immediately in the collection or wishlist."
+  },
+  {
+    "id": "TC002",
+    "title": "edit album functionality",
+    "description": "Verify that a user can edit an existing album's metadata including title, artist, description, memo, and images. Changes should be saved persistently and reflected immediately in the album list."
+  },
+  {
+    "id": "TC003",
+    "title": "delete album functionality",
+    "description": "Verify that deleting an album prompts a confirmation dialog and upon confirmation, the album is removed immediately from the collection or wishlist and the local storage."
+  },
+  {
+    "id": "TC004",
+    "title": "reorder albums functionality",
+    "description": "Verify that users can reorder albums via drag and drop in both Collection and Wishlist views, and that the new order is saved persistently and restored after app restart."
+  },
+  {
+    "id": "TC005",
+    "title": "spotify search for album cover and link",
+    "description": "Verify that the Spotify search integration returns album cover images and music links correctly. Selecting a cover image sets it as the album cover, and selecting a music link populates the link field without changing the cover."
+  },
+  {
+    "id": "TC006",
+    "title": "search albums by title artist description",
+    "description": "Verify that the search functionality filters albums by title, artist, and description in real-time and updates the displayed list accordingly."
+  },
+  {
+    "id": "TC007",
+    "title": "backup and restore functionality",
+    "description": "Verify that the backup feature generates a .zip file containing the database and images, and the restore feature imports a .zip file correctly replacing the database and images, with data integrity maintained."
+  },
+  {
+    "id": "TC008",
+    "title": "permission handling and error messaging",
+    "description": "Verify that the app handles permission denials gracefully by showing user-friendly dialogs, and network errors during Spotify search show appropriate error messages without crashing."
+  },
+  {
+    "id": "TC009",
+    "title": "album detail view and external link",
+    "description": "Verify that tapping an album opens the detail screen with all metadata displayed correctly, hero animations play smoothly, and external music links open in Spotify or a browser."
+  },
+  {
+    "id": "TC010",
+    "title": "artist detail screen display",
+    "description": "Verify that the artist detail screen shows all albums grouped by the artist and displays the correct album count for that artist."
+  }
+]

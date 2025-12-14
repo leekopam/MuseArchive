@@ -1,0 +1,16 @@
+{
+  "status": "commited",
+  "type": "backend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:3000",
+  "backendAuthType": "public",
+  "executionArgs": {
+    "projectName": "MuseArchive",
+    "projectPath": "c:\\Users\\flzhv\\Desktop\\make_APP\\my_album_app\\MuseArchive",
+    "testIds": [],
+    "additionalInstruction": "",
+    "envs": {
+      "API_KEY": "sk-user-gj-cjuOcrd1B5fALwtRTD1Aripn2VDOF-XDyQYy11sdGP_bn2gQcuhj2kBtsRRvxOwCmFILQn1fxQg44sRD4ZSCjiyN1hhlniYUCP0R0UY1Jl8uqDy64H0ZYvKdo0xloRIo"
+    }
+  }
+}

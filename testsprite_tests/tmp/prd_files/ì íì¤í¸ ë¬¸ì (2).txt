@@ -1,0 +1,50 @@
+MuseArchive Debugging & Assurance Checklist
+Use this checklist to verify the stability and functionality of the MuseArchive application.
+
+1. 🏠 Home Screen (Main Dashboard)
+ Initial Load: Does the app load without crashing? Are albums displayed correctly?
+ Tab Switching: Do 'Collection' and 'Wishlist' tabs switch instantly? Are items filtered correctly between them?
+ Empty States: If no albums exist, does the "Add Album" prompt appear with the correct icon?
+ Search:
+ Does typing in the search bar filter results in real-time?
+ Does it search by Title, Artist, and Description?
+ Reorder (순서 변경):
+ Does "순서 변경" mode prevent the moving menu from opening on long-press?
+ Drag & Drop: Does the album snap to the new position smoothly?
+ Persistence: After reordering and restarting the app, is the new order maintained?
+ Delete Album:
+ Long-press album (Normal Mode) -> Select "Delete".
+ Does the confirmation dialog appear?
+ After deletion, does the item vanish immediately?
+2. ➕ Add/Edit Screen
+ Text Input: Can you enter Title, Artist, Description, Memo?
+ Spotify Integration:
+ Cover Search: Does searching for an image return results?
+ Link Search: Does the "Link Search" button populate the link field without changing the cover?
+ Image Picker:
+ Can you select an image from the Gallery?
+ Can you take a photo with the Camera?
+ OCR: Does the text recognition button correctly extract text from the selected image?
+ Validation: Does the "Save" button require at least a Title and Artist?
+3. 📄 Detail Screen
+ Hero Animation: Does the album cover transition smoothly from Home to Detail?
+ Information: Are all fields (Format, Label, Genre, Style) displayed correctly?
+ External Link: Does clicking the "Listen" (음악 듣기) button open Spotify/browser?
+ Edit Mode: Does clicking Edit navigate to the Add/Edit screen with fields pre-filled?
+4. 🧑‍🎤 Artist Detail Screen
+ Navigation: Can you reach this screen by tapping an artist name?
+ Grouped Albums: Does it show only albums by that artist?
+ Stats: Is the album count correct?
+5. 💾 Data & Services
+ Backup:
+ Go to Settings -> Backup.
+ Does it successfully generate a .zip file?
+ Restore:
+ Can you import a previously created backup?
+ Does it replace the current database and restore images?
+ Performance: Scroll through a list of 50+ albums (if available). Is it smooth (60fps)?
+6. ⚠️ Edge Cases & Errors
+ Network Loss: Try searching Spotify with Wi-Fi off. Does it show a graceful error message instead of crashing?
+ Permissions:
+ If Camera permission is denied, does the app inform the user nicely?
+ Large Images: Try adding a very high-res image. Does the app handle it without Memory Error?

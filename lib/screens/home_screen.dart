@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../models/album.dart';
 import '../viewmodels/home_viewmodel.dart';
 import '../widgets/common_widgets.dart';
@@ -11,13 +12,64 @@ import 'detail_screen.dart';
 import 'settings_screen.dart';
 import 'all_songs_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    final viewModel = context.read<HomeViewModel>();
+    // Initialize page controller with the current index from viewModel
+    int initialPage = viewModel.currentView == AlbumView.collection ? 0 : 1;
+    _pageController = PageController(initialPage: initialPage);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onPageChanged(int index) {
+    final viewModel = context.read<HomeViewModel>();
+    if (index == 0) {
+      if (viewModel.currentView != AlbumView.collection) {
+        viewModel.setView(AlbumView.collection);
+      }
+    } else {
+      if (viewModel.currentView != AlbumView.wishlist) {
+        viewModel.setView(AlbumView.wishlist);
+      }
+    }
+  }
+
+  void _onSegmentChanged(AlbumView? value) {
+    if (value != null) {
+      final viewModel = context.read<HomeViewModel>();
+      viewModel.setView(value);
+      _pageController.animateToPage(
+        value == AlbumView.collection ? 0 : 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<HomeViewModel>();
     final theme = Theme.of(context);
+
+    // Sync PageController if external change happens (though strictly VM drives this now via onSegmentChanged)
+    // But if VM changes view NOT via segment (unlikely in this setup but possible), we might want to animate.
+    // For now, relying on _onSegmentChanged driving the animation is safer to avoid loops.
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -33,11 +85,7 @@ class HomeScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: CupertinoSlidingSegmentedControl<AlbumView>(
                 groupValue: viewModel.currentView,
-                onValueChanged: (value) {
-                  if (value != null) {
-                    viewModel.setView(value);
-                  }
-                },
+                onValueChanged: _onSegmentChanged,
                 children: const {
                   AlbumView.collection: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20),
@@ -54,25 +102,65 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Expanded(child: _buildAlbumGrid(context, viewModel)),
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                children: [
+                  _buildAlbumGrid(context, viewModel, AlbumView.collection),
+                  _buildAlbumGrid(context, viewModel, AlbumView.wishlist),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAlbumGrid(BuildContext context, HomeViewModel viewModel) {
-    final albums = viewModel.filteredAlbums;
+  Widget _buildAlbumGrid(
+    BuildContext context,
+    HomeViewModel viewModel,
+    AlbumView view,
+  ) {
+    final albums = viewModel.getAlbumsForView(view);
+
     if (albums.isEmpty && !viewModel.isLoading) {
       return EmptyState(
-        icon: viewModel.currentView == AlbumView.collection
+        icon: view == AlbumView.collection
             ? Icons.music_note_outlined
             : Icons.favorite_border,
-        message: viewModel.currentView == AlbumView.collection
-            ? '앨범이 없습니다.'
-            : '위시리스트가 비었습니다.',
-        onAction: () => _navigateToAddScreen(context, viewModel.currentView),
+        message: view == AlbumView.collection ? '앨범이 없습니다.' : '위시리스트가 비었습니다.',
+        onAction: () => _navigateToAddScreen(context, view),
         actionLabel: '앨범 추가하기',
+      );
+    }
+
+    if (viewModel.isReorderMode) {
+      // ReorderableGridView requires a builder or count.
+      // We use builder for efficiency.
+      // Note: reorderable_grid_view package's API:
+      // ReorderableGridView.builder(itemCount: ..., onReorder: ..., itemBuilder: ...)
+      return ReorderableGridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 0.75,
+        ),
+        itemCount: albums.length,
+        onReorder: (oldIndex, newIndex) {
+          viewModel.reorderInView(oldIndex, newIndex, view);
+        },
+        itemBuilder: (context, index) {
+          final album = albums[index];
+          // Key is crucial for reordering
+          return KeyedSubtree(
+            key: ValueKey(album.id),
+            child: _AlbumCard(album: album),
+          );
+        },
       );
     }
 
@@ -214,6 +302,8 @@ class _AlbumCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.read<HomeViewModel>();
+    // If in Reorder mode, we disable our custom onLongPress so ReorderableGridView can claim it.
+    final canShowMenu = !viewModel.isReorderMode;
 
     return GestureDetector(
       onTap: () async {
@@ -225,9 +315,9 @@ class _AlbumCard extends StatelessWidget {
           viewModel.loadAlbums();
         }
       },
-      onLongPress: () {
-        _showMoveAlbumSheet(context, album, viewModel);
-      },
+      onLongPress: canShowMenu
+          ? () => _showMoveAlbumSheet(context, album, viewModel)
+          : null,
       child: Card(
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
@@ -314,6 +404,52 @@ class _AlbumCard extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   ListTile(
+                    leading: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.red,
+                    ),
+                    title: const Text(
+                      '앨범 삭제',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    onTap: () {
+                      Navigator.pop(builderContext);
+                      showDialog(
+                        context: context,
+                        builder: (dialogContext) {
+                          return AlertDialog(
+                            title: const Text('앨범 삭제'),
+                            content: const Text('정말로 이 앨범을 삭제하시겠습니까?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                child: const Text('취소'),
+                              ),
+                              TextButton(
+                                onPressed: () async {
+                                  Navigator.pop(dialogContext);
+                                  await viewModel.deleteAlbum(album.id);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('앨범이 삭제되었습니다.'),
+                                      ),
+                                    );
+                                  }
+                                },
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                ),
+                                child: const Text('삭제'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
                     leading: const Icon(Icons.cancel_outlined),
                     title: const Text('취소'),
                     onTap: () => Navigator.pop(builderContext),
@@ -391,34 +527,34 @@ class _AlbumCard extends StatelessWidget {
 
   Widget _buildFormatBadge() {
     const formatColors = {
-      'LP': Color(0xFFD4AF37), // Metallic Gold for luxury look
-      'CD': Color(0xFF4A90E2),
-      'DVD': Color(0xFF7B1FA2),
-      'Blu-ray': Color(0xFF007BFF),
+      'LP': Color(0xFFD4AF37), // Metallic Gold
+      'CD': Color(0xFF607D8B), // Blue Grey (Premium Silver look)
+      'DVD': Color(0xFF8E24AA), // Purple (Premium)
+      'Blu-ray': Color(0xFF2962FF), // Vivid Blue
     };
     final formatPriority = ['LP', 'CD', 'DVD', 'Blu-ray'];
 
-    String? badgeLabel;
-    Color? badgeColor;
+    List<Widget> badges = [];
 
     for (final format in formatPriority) {
       if (album.formats.any(
         (f) => f.toLowerCase().contains(format.toLowerCase()),
       )) {
-        badgeLabel = format;
-        badgeColor = formatColors[format];
-        break;
+        badges.add(_Badge(label: format, color: formatColors[format]!));
       }
     }
 
-    if (badgeLabel == null) {
+    if (badges.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Positioned(
       top: 8,
       left: 8,
-      child: _Badge(label: badgeLabel, color: badgeColor!),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: badges,
+      ),
     );
   }
 }

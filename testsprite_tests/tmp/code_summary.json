@@ -1,0 +1,44 @@
+{
+  "tech_stack": [
+    "Dart",
+    "Flutter",
+    "Hive",
+    "Provider"
+  ],
+  "features": [
+    {
+      "name": "Album Management",
+      "description": "Load, add, update, delete, and reorder albums. Handles persistence via Hive.",
+      "files": [
+        "lib/models/album.dart",
+        "lib/services/album_repository.dart",
+        "lib/viewmodels/home_viewmodel.dart"
+      ],
+      "api_doc": {
+        "openapi": "3.0.0",
+        "info": {
+          "title": "Album API",
+          "version": "1.0.0"
+        },
+        "paths": {}
+      }
+    },
+    {
+      "name": "Album Form & Search",
+      "description": "Form handling for creating/editing albums, including Spotify search and image saving.",
+      "files": [
+        "lib/viewmodels/album_form_viewmodel.dart",
+        "lib/services/spotify_service.dart",
+        "lib/screens/add_screen.dart"
+      ],
+      "api_doc": {
+        "openapi": "3.0.0",
+        "info": {
+          "title": "Album Form API",
+          "version": "1.0.0"
+        },
+        "paths": {}
+      }
+    }
+  ]
+}

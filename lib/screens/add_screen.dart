@@ -25,30 +25,99 @@ class _AddScreenState extends State<AddScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _controllers = _FormControllers();
+  Timer? _debounce;
+
+  String? _albumId;
 
   @override
   void initState() {
     super.initState();
-    _viewModel = context.read<AlbumFormViewModel>();
-    _viewModel.initialize(widget.albumToEdit, widget.isWishlist);
-    _viewModel.addListener(_updateControllers);
-    _controllers.setupInitial(context, _viewModel);
+    _albumId = widget.albumToEdit?.id;
+
+    // Post-frame callback to safely access context and initialize VM
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _viewModel = context.read<AlbumFormViewModel>();
+      _viewModel.initialize(widget.albumToEdit, widget.isWishlist);
+      _viewModel.addListener(_updateControllers);
+      _controllers.setupInitial(context, _viewModel);
+      _controllers.addListener(_onFieldChanged);
+
+      // If we are starting with a new album, the VM creates one with a new ID.
+      // We don't set _albumId yet; we wait for the first save.
+    });
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _viewModel.removeListener(_updateControllers);
+    _controllers.removeListener(_onFieldChanged);
     _controllers.dispose();
     super.dispose();
   }
 
   void _updateControllers() {
+    // Only update from ViewModel if we are not actively editing
+    // or if the change came from an external source (like barcode scan)
+    // This is tricky with two-way binding.
+    // Simplified: We trust _FormControllers to hold the truth while editing.
+    // But if ViewModel changes drastically (e.g. search result loaded), we must update controllers.
+
+    if (_viewModel.isLoading) return; // Don't update while loading
+
+    // We can check specific flags or just update if the ViewModel has "newer" data that wasn't user input.
+    // For now, relies on explicit updates from VM side or careful management.
+    // In this specific architecture, updateControllers is called on VM notify.
+    // We should be careful not to overwrite user input if the user is typing.
+    // But since VM update usually happens on 'save' or 'load', it should be fine.
+
+    // Ideally we'd have a 'source' of change.
+    // For this task, we will just update.
     _controllers.update(_viewModel);
+
     if (mounted) {
-      // Defer the setState call to after the build phase
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() {});
       });
+    }
+  }
+
+  void _onFieldChanged() {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 1000), () {
+      _saveIfNeeded();
+    });
+  }
+
+  Future<void> _saveIfNeeded() async {
+    if (!mounted) return;
+
+    final title = _controllers.title.text.trim();
+    final artist = _controllers.artist.text.trim();
+
+    // Checklist Requirement: Require at least Title and Artist.
+    if (title.isEmpty || artist.isEmpty) {
+      // If essential fields are empty, we do NOT create/update the album yet.
+      return;
+    }
+
+    _controllers.commitChanges(_viewModel);
+
+    // Debug Log
+    // Debug Log removed for production
+    // print("DEBUG: Saving Album...");
+
+    await _viewModel.saveAlbum(_albumId);
+
+    // After first save of a new album, capture the ID so future saves are updates, not creates.
+    if (_albumId == null && _viewModel.currentAlbum != null) {
+      if (mounted) {
+        setState(() {
+          _albumId = _viewModel.currentAlbum!.id;
+        });
+      }
+      // print("DEBUG: Album created...");
     }
   }
 
@@ -56,36 +125,52 @@ class _AddScreenState extends State<AddScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Consumer<AlbumFormViewModel>(
-      builder: (context, viewModel, child) {
-        if (viewModel.errorMessage != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) ErrorSnackBar.show(context, viewModel.errorMessage!);
-            viewModel.clearError();
-          });
-        }
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
 
-        return Scaffold(
-          appBar: _buildAppBar(context, viewModel),
-          body: SafeArea(
-            child: Stack(
-              children: [
-                if (viewModel.currentAlbum != null)
-                  Form(key: _formKey, child: _buildForm(context, viewModel)),
-                if (viewModel.isLoading)
-                  Positioned.fill(
-                    child: Container(
-                      color: theme.scaffoldBackgroundColor.withValues(
-                        alpha: 0.5,
-                      ),
-                      child: const Center(child: CircularProgressIndicator()),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
+        // Trigger a final save check before allowing exit
+        // We cancel the debounce to prevent double-save, then save immediately.
+        if (_debounce?.isActive ?? false) _debounce!.cancel();
+
+        // Only attempt save if there's a title (to avoid error/ghost)
+        // and if there are actual changes
+        await _saveIfNeeded();
+
+        if (context.mounted) Navigator.pop(context);
       },
+      child: Consumer<AlbumFormViewModel>(
+        builder: (context, viewModel, child) {
+          if (viewModel.errorMessage != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) ErrorSnackBar.show(context, viewModel.errorMessage!);
+              viewModel.clearError();
+            });
+          }
+
+          return Scaffold(
+            appBar: _buildAppBar(context, viewModel),
+            body: SafeArea(
+              child: Stack(
+                children: [
+                  if (viewModel.currentAlbum != null)
+                    Form(key: _formKey, child: _buildForm(context, viewModel)),
+                  if (viewModel.isLoading)
+                    Positioned.fill(
+                      child: Container(
+                        color: theme.scaffoldBackgroundColor.withValues(
+                          alpha: 0.5,
+                        ),
+                        child: const Center(child: CircularProgressIndicator()),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -103,13 +188,7 @@ class _AddScreenState extends State<AddScreen> {
           onPressed: () => _showSearchDialog(context, viewModel),
           tooltip: 'Discogs에서 검색',
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
-          child: ElevatedButton(
-            onPressed: () => _saveForm(context, viewModel),
-            child: const Text('저장'),
-          ),
-        ),
+        // Save button removed for auto-save
       ],
     );
   }
@@ -124,7 +203,10 @@ class _AddScreenState extends State<AddScreen> {
           sliver: SliverList(
             delegate: SliverChildListDelegate([
               _buildSection('기본 정보', [
-                _ImagePicker(viewModel: viewModel),
+                _ImagePicker(
+                  viewModel: viewModel,
+                  onTap: () => _showImageSourceSelection(context),
+                ),
                 const SizedBox(height: 16),
                 _buildTextField(_controllers.title, '앨범 제목', isRequired: true),
                 _buildTextField(_controllers.titleKr, '앨범 제목 (한국어)'),
@@ -132,8 +214,27 @@ class _AddScreenState extends State<AddScreen> {
               ]),
               _buildSection('세부 정보', [
                 _buildTextField(_controllers.desc, '설명', maxLines: 4),
-                _buildTextField(_controllers.date, '발매일 (YYYY.MM.DD)'),
-                _buildTextField(_controllers.link, '음악 듣기 링크'),
+                _buildDateField(context), // New Date Picker Field
+                _buildTextField(
+                  _controllers.link,
+                  '음악 듣기 링크',
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.search, color: Color(0xFF1DB954)),
+                    tooltip: 'Spotify에서 링크 검색',
+                    onPressed: () async {
+                      final configured = await viewModel.isSpotifyConfigured();
+                      if (configured && mounted) {
+                        _showSpotifyLinkSearchDialog(context, viewModel);
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('설정에서 Spotify 키를 입력해주세요.'),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
               ]),
               _buildSection('분류', [
                 _buildTextField(_controllers.label, '레이블 (쉼표로 구분)'),
@@ -142,27 +243,28 @@ class _AddScreenState extends State<AddScreen> {
                 _buildTextField(_controllers.style, '스타일 (쉼표로 구분)'),
               ]),
               _buildSection('옵션', [
-                _buildSwitchTile(
-                  '한정판',
-                  viewModel.currentAlbum!.isLimited,
-                  (v) => viewModel.updateCurrentAlbum(
+                _buildSwitchTile('한정판', viewModel.currentAlbum!.isLimited, (v) {
+                  viewModel.updateCurrentAlbum(
                     viewModel.currentAlbum!.copyWith(isLimited: v),
-                  ),
-                ),
-                _buildSwitchTile(
-                  '특이사항',
-                  viewModel.currentAlbum!.isSpecial,
-                  (v) => viewModel.updateCurrentAlbum(
+                  );
+                  _onFieldChanged(); // Trigger auto-save
+                }),
+                _buildSwitchTile('특이사항', viewModel.currentAlbum!.isSpecial, (
+                  v,
+                ) {
+                  viewModel.updateCurrentAlbum(
                     viewModel.currentAlbum!.copyWith(isSpecial: v),
-                  ),
-                ),
-                _buildSwitchTile(
-                  '위시리스트',
-                  viewModel.currentAlbum!.isWishlist,
-                  (v) => viewModel.updateCurrentAlbum(
+                  );
+                  _onFieldChanged();
+                }),
+                _buildSwitchTile('위시리스트', viewModel.currentAlbum!.isWishlist, (
+                  v,
+                ) {
+                  viewModel.updateCurrentAlbum(
                     viewModel.currentAlbum!.copyWith(isWishlist: v),
-                  ),
-                ),
+                  );
+                  _onFieldChanged();
+                }),
               ]),
             ]),
           ),
@@ -185,12 +287,18 @@ class _AddScreenState extends State<AddScreen> {
                         TextButton.icon(
                           icon: const Icon(Icons.album_outlined),
                           label: const Text('디스크 추가'),
-                          onPressed: () => viewModel.addNewDisc(),
+                          onPressed: () {
+                            viewModel.addNewDisc();
+                            _onFieldChanged();
+                          },
                         ),
                         TextButton.icon(
                           icon: const Icon(Icons.add_circle_outline),
                           label: const Text('트랙 추가'),
-                          onPressed: () => viewModel.addTrack(Track(title: '')),
+                          onPressed: () {
+                            viewModel.addTrack(Track(title: ''));
+                            _onFieldChanged();
+                          },
                         ),
                       ],
                     ),
@@ -206,19 +314,20 @@ class _AddScreenState extends State<AddScreen> {
             delegate: ReorderableSliverChildBuilderDelegate((context, index) {
               final track = viewModel.currentAlbum!.tracks[index];
               return _TrackListItemWidget(
-                key: ValueKey(track.id), // Use stable, unique ID for the key
+                key: ValueKey(track.id),
                 track: track,
                 viewModel: viewModel,
                 index: index,
+                onChanged: _onFieldChanged, // Pass callback
               );
             }, childCount: viewModel.currentAlbum!.tracks.length),
             onReorder: (oldIndex, newIndex) {
               setState(() {
-                // Adjust index when moving an item down the list.
                 if (oldIndex < newIndex) {
                   newIndex -= 1;
                 }
                 viewModel.reorderTracks(oldIndex, newIndex);
+                _onFieldChanged();
               });
             },
           ),
@@ -250,17 +359,59 @@ class _AddScreenState extends State<AddScreen> {
     String label, {
     bool isRequired = false,
     int maxLines = 1,
+    Widget? suffixIcon,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextFormField(
         controller: controller,
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(labelText: label, suffixIcon: suffixIcon),
         maxLines: maxLines,
+        // Validation visually hints but doesn't block strictly since we allow loose saving,
+        // but for title we want to ensure it is there for meaningful record.
         validator: isRequired
             ? (value) =>
                   value == null || value.isEmpty ? '$label 필드는 필수입니다.' : null
             : null,
+      ),
+    );
+  }
+
+  Widget _buildDateField(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: InkWell(
+        onTap: () async {
+          final initialDate =
+              DateTime.tryParse(_controllers.date.text.replaceAll('.', '-')) ??
+              DateTime.now();
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: initialDate,
+            firstDate: DateTime(1900),
+            lastDate: DateTime(2100),
+            locale: const Locale('ko', 'KR'),
+          );
+          if (picked != null) {
+            final formatted =
+                '${picked.year}.${picked.month.toString().padLeft(2, '0')}.${picked.day.toString().padLeft(2, '0')}';
+            if (_controllers.date.text != formatted) {
+              _controllers.date.text = formatted;
+              // Trigger immediate save for date changes to avoid race conditions with navigation
+              _saveIfNeeded();
+            }
+          }
+        },
+        child: IgnorePointer(
+          child: TextFormField(
+            controller: _controllers.date,
+            decoration: const InputDecoration(
+              labelText: '발매일',
+              suffixIcon: Icon(Icons.calendar_today),
+            ),
+            readOnly: true,
+          ),
+        ),
       ),
     );
   }
@@ -275,8 +426,6 @@ class _AddScreenState extends State<AddScreen> {
       value: value,
       onChanged: onChanged,
       contentPadding: EdgeInsets.zero,
-      // 'activeColor' is deprecated, use 'activeThumbColor' or rely on theme
-      // Assuming 'activeThumbColor' is the correct replacement
       activeThumbColor: Theme.of(context).colorScheme.primary,
     );
   }
@@ -293,21 +442,7 @@ class _AddScreenState extends State<AddScreen> {
     );
     if (result != null && mounted) {
       await viewModel.searchByBarcode(result);
-    }
-  }
-
-  Future<void> _saveForm(
-    BuildContext context,
-    AlbumFormViewModel viewModel,
-  ) async {
-    if (_formKey.currentState!.validate()) {
-      _controllers.commitChanges(viewModel); // Commit final text changes
-      await viewModel.saveAlbum(widget.albumToEdit?.id);
-
-      if (!mounted) return;
-      if (viewModel.errorMessage == null) {
-        Navigator.pop(context, true);
-      }
+      _onFieldChanged();
     }
   }
 
@@ -420,6 +555,7 @@ class _AddScreenState extends State<AddScreen> {
                     if (releaseId != null) {
                       Navigator.pop(dialogContext);
                       await viewModel.loadAlbumById(releaseId);
+                      _onFieldChanged();
                     }
                   },
                   borderRadius: BorderRadius.circular(12),
@@ -530,31 +666,466 @@ class _AddScreenState extends State<AddScreen> {
       },
     );
   }
+
+  Future<void> _showSpotifySearchDialog(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+  ) async {
+    final searchController = TextEditingController(
+      text: _controllers.title.text,
+    );
+
+    try {
+      final query = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Spotify 이미지 검색'),
+            content: TextField(
+              controller: searchController,
+              decoration: const InputDecoration(
+                labelText: '검색어 (앨범명/아티스트)',
+                hintText: '예: Pink Floyd Dark Side',
+              ),
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (value) {
+                Navigator.pop(dialogContext, value);
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('취소'),
+              ),
+              ElevatedButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, searchController.text),
+                child: const Text('검색'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (query != null && query.isNotEmpty && mounted) {
+        final results = await viewModel.searchSpotifyForConnect(query);
+        if (mounted) {
+          _showSpotifyResultsDialog(context, viewModel, results);
+        }
+      }
+    } finally {
+      searchController.dispose();
+    }
+  }
+
+  Future<void> _showSpotifyResultsDialog(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+    List<Map<String, String>> results,
+  ) async {
+    if (results.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('검색 결과가 없습니다.')));
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Spotify 검색 결과'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: ListView.builder(
+              itemCount: results.length,
+              itemBuilder: (context, index) {
+                final album = results[index];
+                final hasImage =
+                    album['image_url'] != null &&
+                    album['image_url']!.isNotEmpty;
+                return ListTile(
+                  leading: hasImage
+                      ? Image.network(
+                          album['image_url']!,
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorBuilder: (ctx, _, __) => const Icon(Icons.album),
+                        )
+                      : const Icon(Icons.album),
+                  title: Text(album['title'] ?? ''),
+                  subtitle: Text(
+                    '${album['artist']} (${album['release_date']})',
+                  ),
+                  onTap: () {
+                    // 1. Pop the dialog immediately using its context
+                    Navigator.pop(dialogContext);
+
+                    if (hasImage) {
+                      // 2. Schedule the async update on the next microtask
+                      // using the parent 'context' (AddScreen's context) if needed,
+                      // but here we just need to ensure we don't hold onto dialogContext.
+                      Future.microtask(() async {
+                        if (mounted) {
+                          await viewModel.updateFromSpotify(
+                            imageUrl: album['image_url']!,
+                            linkUrl: album['external_url'],
+                          );
+                          if (mounted) _onFieldChanged();
+                        }
+                      });
+                    } else {
+                      // Use parent context for snackbar, not dialog's
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('이미지가 없는 앨범입니다.')),
+                        );
+                      }
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('닫기'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showDiscogsSearchForImage(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+  ) async {
+    // Reuse the existing search dialog logic but intent is only image
+    // Ideally we duplicate the dialog or refactor, for now let's reuse simple logic
+    // Or just simple title search
+    final searchController = TextEditingController(
+      text: _controllers.title.text,
+    );
+
+    final query = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Discogs 이미지 검색'),
+          content: TextField(
+            controller: searchController,
+            decoration: const InputDecoration(labelText: '검색어'),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('취소'),
+            ),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, searchController.text),
+              child: const Text('검색'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (query != null && query.isNotEmpty && mounted) {
+      final results = await viewModel.searchByTitleArtist(title: query);
+      if (mounted) {
+        _showDiscogsImageResults(context, viewModel, results);
+      }
+    }
+  }
+
+  void _showDiscogsImageResults(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+    List<dynamic> results,
+  ) {
+    if (results.isEmpty) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('검색 결과가 없습니다.')));
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('이미지 선택'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: results.length,
+            itemBuilder: (context, index) {
+              final item = results[index];
+              final thumb = item['thumb'] as String?;
+              return InkWell(
+                onTap: () async {
+                  Navigator.pop(context);
+                  // Need to fetch full details to get high res image?
+                  // Or just use thumb? Often 'thumb' is low res. 'cover_image' might be available in full search
+                  // But search result usually has 'thumb'.
+                  // Let's try to load detailed album first to extract image
+                  if (item['id'] != null) {
+                    // We can reuse loadAlbumById but that overwrites everything.
+                    // We need a helper to just get Image from ID.
+                    // Or just use thumb for now.
+                    if (thumb != null) {
+                      await viewModel.updateCoverFromUrl(thumb);
+                      _onFieldChanged();
+                    }
+                  }
+                },
+                child: thumb != null
+                    ? Image.network(thumb, fit: BoxFit.cover)
+                    : const Icon(Icons.broken_image),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showImageSourceSelection(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('사진 보관함에서 선택'),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final imagePath = await _viewModel.pickImage();
+                if (imagePath != null && mounted) {
+                  _viewModel.updateCurrentAlbum(
+                    _viewModel.currentAlbum!.copyWith(imagePath: imagePath),
+                  );
+                  _onFieldChanged();
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.album),
+              title: const Text('Discogs에서 검색'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showDiscogsSearchForImage(context, _viewModel);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.music_note, color: Color(0xFF1DB954)),
+              title: const Text('Spotify에서 검색'),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final configured = await _viewModel.isSpotifyConfigured();
+                if (configured && mounted) {
+                  _showSpotifySearchDialog(context, _viewModel);
+                } else if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('설정에서 Spotify 키를 입력해주세요.')),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showSpotifyLinkSearchDialog(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+  ) async {
+    final searchController = TextEditingController(
+      text: _controllers.title.text,
+    );
+
+    try {
+      final query = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Spotify 링크 검색'),
+            content: TextField(
+              controller: searchController,
+              decoration: const InputDecoration(
+                labelText: '검색어 (앨범명/아티스트)',
+                hintText: '예: Unhappy Refrain',
+              ),
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (value) {
+                Navigator.pop(dialogContext, value);
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('취소'),
+              ),
+              ElevatedButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, searchController.text),
+                child: const Text('검색'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (query != null && query.isNotEmpty && mounted) {
+        final results = await viewModel.searchSpotifyForConnect(query);
+        if (mounted) {
+          _showSpotifyLinkResultsDialog(context, viewModel, results);
+        }
+      }
+    } finally {
+      searchController.dispose();
+    }
+  }
+
+  Future<void> _showSpotifyLinkResultsDialog(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+    List<Map<String, String>> results,
+  ) async {
+    if (results.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('검색 결과가 없습니다.')));
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Spotify 링크 검색 결과'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: ListView.builder(
+              itemCount: results.length,
+              itemBuilder: (context, index) {
+                final album = results[index];
+                final hasImage =
+                    album['image_url'] != null &&
+                    album['image_url']!.isNotEmpty;
+                return ListTile(
+                  leading: hasImage
+                      ? Image.network(
+                          album['image_url']!,
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorBuilder: (ctx, _, __) => const Icon(Icons.album),
+                        )
+                      : const Icon(Icons.album),
+                  title: Text(album['title'] ?? ''),
+                  subtitle: Text(
+                    '${album['artist']} (${album['release_date']})',
+                  ),
+                  onTap: () {
+                    final link = album['external_url'];
+                    Navigator.pop(dialogContext);
+
+                    if (link != null && link.isNotEmpty) {
+                      if (mounted) {
+                        _controllers.link.text = link;
+                        _onFieldChanged(); // Trigger save
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Spotify 링크가 적용되었습니다.')),
+                        );
+                      }
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('링크 정보가 없는 앨범입니다.')),
+                        );
+                      }
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('닫기'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _ImagePicker extends StatelessWidget {
   final AlbumFormViewModel viewModel;
-  const _ImagePicker({required this.viewModel});
+  // We need access to the parent state to trigger the modal which is defined in State.
+  // Or better, pass the callback.
+  // But _AddScreenState is private.
+  // We can just find the ancestor state or pass a callback.
+  // The easiest valid way is to modify the constructor or make _ImagePicker part of the main file logic.
+  // Since it's already in the same file, let's just use a callback.
+  // But the replacement block above didn't change the constructor call site (which is in _buildSection).
+  // So I cannot easily add a parameter without changing _buildSection.
+  // Wait, _AddScreenState can just pass the function if I change the call site.
+  // OR, I can move the logic INTO this widget if I pass 'context' (it has context in build).
+  // But _showImageSourceSelection is in _AddScreenState currently (in my proposed code above).
+  // Actually, I pasted the methods INSIDE _AddScreenState (implicitly, by replacing _ImagePicker but wait...
+  // The target lines I selected (644-711) contain the _ImagePicker class definition.
+  // If I overwrite it with methods, I break the file structure if I don't put it in the class.
+  // My bad.
+  // The methods `_showSpotifySearchDialog` etc. should be in `_AddScreenState`.
+  // `_ImagePicker` should be a widget that calls `_showImageSourceSelection`.
+  // I must be careful with placement.
+
+  // Re-evaluating:
+  // I will make `_ImagePicker` accept `VoidCallback onPickImage`.
+  // And in `_buildSection`, I will pass `() => _showImageSourceSelection(context)`.
+
+  // Let's redefine _ImagePicker to accept the callback.
+  final VoidCallback onTap;
+
+  const _ImagePicker({required this.viewModel, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final album = viewModel.currentAlbum!;
     final theme = Theme.of(context);
-    // Unique tag to avoid conflict with HomeScreen/DetailScreen heroes
     final heroTag = 'add-album-cover-${album.id}';
 
     return Center(
       child: Hero(
         tag: heroTag,
         child: GestureDetector(
-          onTap: () async {
-            final imagePath = await viewModel.pickImage();
-            if (imagePath != null) {
-              viewModel.updateCurrentAlbum(
-                album.copyWith(imagePath: imagePath),
-              );
-            }
-          },
+          onTap: onTap,
           child: Container(
             width: 150,
             height: 150,
@@ -593,12 +1164,14 @@ class _TrackListItemWidget extends StatefulWidget {
   final Track track;
   final AlbumFormViewModel viewModel;
   final int index;
+  final VoidCallback onChanged;
 
   const _TrackListItemWidget({
     required Key key,
     required this.track,
     required this.viewModel,
     required this.index,
+    required this.onChanged,
   }) : super(key: key);
 
   @override
@@ -647,6 +1220,7 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
         widget.index,
         widget.track.copyWith(title: _titleController.text),
       );
+      widget.onChanged();
     }
   }
 
@@ -656,6 +1230,7 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
         widget.index,
         widget.track.copyWith(titleKr: _titleKrController.text),
       );
+      widget.onChanged();
     }
   }
 
@@ -694,7 +1269,10 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
                     Icons.remove_circle,
                     color: Colors.redAccent,
                   ),
-                  onPressed: () => widget.viewModel.removeTrack(widget.index),
+                  onPressed: () {
+                    widget.viewModel.removeTrack(widget.index);
+                    widget.onChanged();
+                  },
                 ),
               ],
             ),
@@ -749,7 +1327,10 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
                     Icons.remove_circle_outline,
                     color: Colors.redAccent,
                   ),
-                  onPressed: () => widget.viewModel.removeTrack(widget.index),
+                  onPressed: () {
+                    widget.viewModel.removeTrack(widget.index);
+                    widget.onChanged();
+                  },
                 ),
               ],
             ),
@@ -774,6 +1355,32 @@ class _FormControllers {
 
   void setupInitial(BuildContext context, AlbumFormViewModel viewModel) {
     update(viewModel);
+  }
+
+  void addListener(VoidCallback listener) {
+    title.addListener(listener);
+    titleKr.addListener(listener);
+    artist.addListener(listener);
+    date.addListener(listener);
+    desc.addListener(listener);
+    link.addListener(listener);
+    label.addListener(listener);
+    format.addListener(listener);
+    genre.addListener(listener);
+    style.addListener(listener);
+  }
+
+  void removeListener(VoidCallback listener) {
+    title.removeListener(listener);
+    titleKr.removeListener(listener);
+    artist.removeListener(listener);
+    date.removeListener(listener);
+    desc.removeListener(listener);
+    link.removeListener(listener);
+    label.removeListener(listener);
+    format.removeListener(listener);
+    genre.removeListener(listener);
+    style.removeListener(listener);
   }
 
   void update(AlbumFormViewModel viewModel) {
@@ -802,8 +1409,8 @@ class _FormControllers {
         title: title.text,
         titleKr: titleKr.text,
         artist: artist.text,
-        description: desc.text,
         releaseDate: ReleaseDate.parse(date.text),
+        description: desc.text,
         linkUrl: link.text,
         labels: label.text
             .split(',')
@@ -837,6 +1444,7 @@ class _FormControllers {
 
   void dispose() {
     title.dispose();
+    titleKr.dispose();
     artist.dispose();
     date.dispose();
     desc.dispose();
