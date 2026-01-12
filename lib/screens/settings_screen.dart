@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/album_repository.dart';
 import '../services/discogs_service.dart';
 import '../services/spotify_service.dart';
 import '../services/theme_manager.dart';
+import '../services/update_service.dart';
 import '../widgets/common_widgets.dart';
 
+// region 설정 화면 메인
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
   @override
@@ -20,9 +23,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       TextEditingController();
 
   final AlbumRepository _repository = AlbumRepository();
+  final UpdateService _updateService = UpdateService();
   bool _isLoading = false;
   bool _isDarkMode = false;
+  String _currentVersion = '1.0.0';
 
+  // region 라이프사이클
   @override
   void initState() {
     super.initState();
@@ -39,7 +45,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     themeNotifier.removeListener(_onThemeChanged);
     super.dispose();
   }
+  // endregion
 
+  // region 기능 메서드
   void _onThemeChanged() {
     if (mounted) {
       setState(() {
@@ -57,12 +65,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final discogsToken = prefs.getString('discogs_api_token') ?? '';
     final spotifyId = prefs.getString('spotify_client_id') ?? '';
     final spotifySecret = prefs.getString('spotify_client_secret') ?? '';
+    final version = await _updateService.getCurrentVersion();
 
     setState(() {
       _apiTokenController.text = discogsToken;
       _spotifyClientIdController.text = spotifyId;
       _spotifyClientSecretController.text = spotifySecret;
+      _currentVersion = version;
     });
+  }
+
+  Future<void> _checkForUpdates() async {
+    setState(() => _isLoading = true);
+    try {
+      final updateInfo = await _updateService.checkForUpdate();
+      if (!mounted) return;
+
+      if (updateInfo != null) {
+        _showUpdateDialog(updateInfo);
+      } else {
+        SuccessSnackBar.show(context, '현재 최신 버전을 사용 중입니다.');
+      }
+    } catch (e) {
+      if (mounted) ErrorSnackBar.show(context, '업데이트 확인 실패: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showUpdateDialog(UpdateInfo info) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.system_update_alt, color: Colors.blue),
+              const SizedBox(width: 12),
+              const Text('새로운 버전 업데이트'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '새로운 버전 v${info.latestVersion}이 준비되었습니다.',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '업데이트 내용:',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.black26 : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: SingleChildScrollView(
+                  child: Text(
+                    info.releaseNotes,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('나중에'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                launchUrl(
+                  Uri.parse(info.downloadUrl),
+                  mode: LaunchMode.externalApplication,
+                );
+              },
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('지금 업데이트'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _saveApiToken() async {
@@ -109,15 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _testDiscogsConnection() async {
     setState(() => _isLoading = true);
     try {
-      // Ensure we use the latest token from input if user didn't save?
-      // Ideally we save first. But let's assume user saved.
-      // Or we can temporarily set it in service? Service reads from SharedPrefs.
-      // So we must SAVE first or ensure SharedPrefs is updated.
-      // The button flow: Save -> Test OR just Test (which implies using what's in fields?)
-      // To strictly test what's in Input, we should save it first or pass it.
-      // But Service reads from Prefs. Let's auto-save or warn?
-      // Let's just assume we test what is stored.
-      // Better: Update Prefs with current input before testing.
+      // 테스트 전 현재 입력값으로 설정 업데이트
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('discogs_api_token', _apiTokenController.text);
@@ -213,7 +309,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _isLoading = false);
     }
   }
+  // endregion
 
+  // region 메인 UI
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -238,6 +336,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            Text(
+              '앱 설정',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              color: cardColor,
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListTile(
+                leading: const Icon(Icons.brightness_6, color: Colors.purple),
+                title: Text('다크 모드', style: TextStyle(color: textColor)),
+                trailing: Switch(
+                  value: _isDarkMode,
+                  onChanged: _toggleDarkMode,
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
             Text(
               'Discogs API',
               style: TextStyle(
@@ -390,7 +513,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               style: FilledButton.styleFrom(
                                 backgroundColor: const Color(
                                   0xFF1DB954,
-                                ), // Spotify Green
+                                ), // 스포티파이 그린
                               ),
                             ),
                           ),
@@ -448,31 +571,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 32),
-            Text(
-              '앱 설정',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: textColor,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              color: cardColor,
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ListTile(
-                leading: const Icon(Icons.brightness_6, color: Colors.purple),
-                title: Text('다크 모드', style: TextStyle(color: textColor)),
-                trailing: Switch(
-                  value: _isDarkMode,
-                  onChanged: _toggleDarkMode,
-                ),
-              ),
-            ),
+
             const SizedBox(height: 32),
             Text(
               '앱 정보',
@@ -504,8 +603,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Version 1.0.0',
+                      'Version $_currentVersion',
                       style: TextStyle(fontSize: 14, color: subTextColor),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _checkForUpdates,
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('업데이트 확인'),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -522,3 +635,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
+// endregion

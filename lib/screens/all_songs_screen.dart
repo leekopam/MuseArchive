@@ -6,13 +6,16 @@ import '../models/track.dart';
 import '../services/album_repository.dart';
 import 'detail_screen.dart';
 
-// Helper class to hold a track and a reference to its parent album
+// region 전체 곡 목록 화면 메인
+// region 헬퍼 클래스
+// 트랙과 부모 앨범에 대한 참조를 보유하는 도우미 클래스
 class _SongWithAlbumRef {
   final Track track;
   final Album album;
 
   _SongWithAlbumRef({required this.track, required this.album});
 }
+// endregion
 
 class AllSongsScreen extends StatefulWidget {
   const AllSongsScreen({super.key});
@@ -25,10 +28,12 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   final AlbumRepository _repository = AlbumRepository();
   final List<_SongWithAlbumRef> _allSongs = [];
   List<_SongWithAlbumRef> _filteredSongs = [];
-  bool _isLoading = true; // Start with loading true
+  bool _isLoading = true; // 로딩 true로 시작
   String _searchQuery = '';
+  bool _includeWishlist = false; // 위시리스트 포함 여부 (기본값: false)
   final TextEditingController _searchController = TextEditingController();
 
+  // region 라이프사이클
   @override
   void initState() {
     super.initState();
@@ -48,7 +53,9 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     _searchController.dispose();
     super.dispose();
   }
+  // endregion
 
+  // region 기능 메서드
   Future<void> _showErrorDialog(String message) async {
     return showCupertinoDialog(
       context: context,
@@ -66,9 +73,10 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     );
   }
 
+  // region 데이터 로드
   Future<void> _loadAllSongs() async {
-    // No need to set isLoading to true here if it starts as true
-    // and we only load once. If pull-to-refresh is added, this logic changes.
+    // 처음부터 true이면 로딩을 true로 설정할 필요가 없습니다.
+    // 한 번만 로드하는 경우. 당겨서 새로고침이 추가되면 이 로직이 변경됩니다.
     try {
       final albums = await _repository.getAll();
       _allSongs.clear();
@@ -92,18 +100,38 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       }
     }
   }
+  // endregion
 
   void _filterSongs() {
     if (_searchQuery.isEmpty) {
       _filteredSongs = List.from(_allSongs);
     } else {
       final lowerQuery = _searchQuery.toLowerCase();
+      // 별명 포함한 아티스트 검색 결과 가져오기
+      final matchedArtists = _repository.getArtistNamesMatching(_searchQuery);
+
       _filteredSongs = _allSongs.where((songRef) {
         final track = songRef.track;
         final album = songRef.album;
-        return track.title.toLowerCase().contains(lowerQuery) ||
-            (track.titleKr?.toLowerCase().contains(lowerQuery) ?? false) ||
-            album.artist.toLowerCase().contains(lowerQuery);
+
+        // 위시리스트 필터링: _includeWishlist가 false이면 위시리스트 앨범의 곡은 제외
+        if (!_includeWishlist && album.isWishlist) {
+          return false;
+        }
+
+        final artistName = album.artist;
+
+        // 1. 트랙 제목 검색
+        final titleMatch = track.title.toLowerCase().contains(lowerQuery);
+        // 2. 트랙 한글 제목 검색
+        final titleKrMatch =
+            track.titleKr?.toLowerCase().contains(lowerQuery) ?? false;
+        // 3. 아티스트 이름 직접 검색
+        final artistMatch = artistName.toLowerCase().contains(lowerQuery);
+        // 4. 아티스트 별명 매칭 (Repository 결과 활용)
+        final aliasMatch = matchedArtists.contains(artistName);
+
+        return titleMatch || titleKrMatch || artistMatch || aliasMatch;
       }).toList();
     }
     _filteredSongs.sort((a, b) {
@@ -165,7 +193,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                   (album) => CupertinoDialogAction(
                     child: Text(album.title),
                     onPressed: () {
-                      Navigator.pop(context); // Close the dialog
+                      Navigator.pop(context); // 대화 상자 닫기
                       Navigator.push(
                         context,
                         CupertinoPageRoute(
@@ -214,24 +242,56 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       ),
     );
   }
+  // endregion
 
+  // region 메인 UI
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      child: CupertinoScrollbar(
-        child: CustomScrollView(
-          slivers: [
-            const CupertinoSliverNavigationBar(largeTitle: Text('모든 곡')),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: CupertinoSearchTextField(
-                  controller: _searchController,
-                  placeholder: '곡 또는 아티스트 검색...',
-                ),
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('모든 곡'),
+        backgroundColor: CupertinoColors.systemBackground, // 스크롤 시 색상 변경 방지
+        border: null, // 경계선 제거 (깔끔한 UI)
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: CupertinoSearchTextField(
+                controller: _searchController,
+                placeholder: '곡 또는 아티스트 검색...',
               ),
             ),
-            _buildSongList(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    '위시리스트 곡 포함',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: CupertinoColors.label.resolveFrom(context),
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CupertinoSwitch(
+                    value: _includeWishlist,
+                    activeColor: CupertinoColors.systemPink,
+                    onChanged: (value) {
+                      setState(() {
+                        _includeWishlist = value;
+                        _filterSongs();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: CustomScrollView(slivers: [_buildSongList()])),
           ],
         ),
       ),
@@ -276,7 +336,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
                   fontFamily: '.SF Pro Text',
-                  decoration: TextDecoration.none, // Fix yellow underline
+                  decoration: TextDecoration.none, // 노란색 밑줄 수정
                 ),
               ),
               const SizedBox(height: 8),
@@ -285,7 +345,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                 style: TextStyle(
                   color: CupertinoColors.secondaryLabel.resolveFrom(context),
                   fontSize: 15,
-                  decoration: TextDecoration.none, // Fix yellow underline
+                  decoration: TextDecoration.none, // 노란색 밑줄 수정
                 ),
               ),
             ],
@@ -319,7 +379,9 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     );
   }
 }
+// endregion
 
+// region 내부 위젯
 class _SongListItem extends StatelessWidget {
   final _SongWithAlbumRef songRef;
   final VoidCallback onTap;
@@ -355,7 +417,24 @@ class _SongListItem extends StatelessWidget {
                         imagePath != null &&
                             imagePath.isNotEmpty &&
                             File(imagePath).existsSync()
-                        ? Image.file(File(imagePath), fit: BoxFit.cover)
+                        ? ColorFiltered(
+                            colorFilter: album.isWishlist
+                                ? const ColorFilter.mode(
+                                    CupertinoColors.systemGrey,
+                                    BlendMode.saturation,
+                                  )
+                                : const ColorFilter.mode(
+                                    CupertinoColors.transparent,
+                                    BlendMode.multiply,
+                                  ),
+                            child: Opacity(
+                              opacity: album.isWishlist ? 0.7 : 1.0,
+                              child: Image.file(
+                                File(imagePath),
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          )
                         : Container(
                             color: CupertinoColors.systemGrey5,
                             child: const Icon(
@@ -374,8 +453,15 @@ class _SongListItem extends StatelessWidget {
                       Text(
                         track.title,
                         style: TextStyle(
-                          color: CupertinoColors.label.resolveFrom(context),
+                          color: album.isWishlist
+                              ? CupertinoColors.label
+                                    .resolveFrom(context)
+                                    .withValues(alpha: 0.6)
+                              : CupertinoColors.label.resolveFrom(context),
                           fontSize: 17,
+                          fontWeight: album.isWishlist
+                              ? FontWeight.normal
+                              : FontWeight.w500,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -384,9 +470,13 @@ class _SongListItem extends StatelessWidget {
                       Text(
                         album.artist,
                         style: TextStyle(
-                          color: CupertinoColors.secondaryLabel.resolveFrom(
-                            context,
-                          ),
+                          color: album.isWishlist
+                              ? CupertinoColors.secondaryLabel
+                                    .resolveFrom(context)
+                                    .withValues(alpha: 0.5)
+                              : CupertinoColors.secondaryLabel.resolveFrom(
+                                  context,
+                                ),
                           fontSize: 15,
                         ),
                         maxLines: 1,

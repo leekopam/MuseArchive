@@ -8,6 +8,7 @@ import '../widgets/common_widgets.dart';
 import 'add_screen.dart';
 import 'artist_detail_screen.dart';
 
+// region 상세 화면 메인
 class DetailScreen extends StatefulWidget {
   final Album album;
 
@@ -22,13 +23,16 @@ class _DetailScreenState extends State<DetailScreen> {
   late Album _currentAlbum;
   bool _albumWasModified = false;
 
+  // region 라이프사이클
   @override
   void initState() {
     super.initState();
     _repository = context.read<IAlbumRepository>();
     _currentAlbum = widget.album;
   }
+  // endregion
 
+  // region 메인 UI
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -44,7 +48,9 @@ class _DetailScreenState extends State<DetailScreen> {
       ),
     );
   }
+  // endregion
 
+  // region 앱바 빌더
   SliverAppBar _buildSliverAppBar(BuildContext context) {
     return SliverAppBar(
       expandedHeight: 300.0,
@@ -123,7 +129,7 @@ class _DetailScreenState extends State<DetailScreen> {
                       child: Icon(
                         Icons.album,
                         size: 100,
-                        color: const Color(0xFFD4AF37), // Metallic Gold
+                        color: const Color(0xFFD4AF37), // 메탈릭 골드
                       ),
                     ),
             ),
@@ -145,7 +151,9 @@ class _DetailScreenState extends State<DetailScreen> {
       ),
     );
   }
+  // endregion
 
+  // region 컨텐츠 빌더
   Widget _buildContent(BuildContext context) {
     return SliverList(
       delegate: SliverChildListDelegate([
@@ -319,8 +327,9 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
-  // --- Actions ---
+  // endregion
 
+  // region 기능 메서드
   Future<void> _toggleWishlistStatus() async {
     final newAlbum = _currentAlbum.copyWith(
       isWishlist: !_currentAlbum.isWishlist,
@@ -356,7 +365,7 @@ class _DetailScreenState extends State<DetailScreen> {
       context,
       MaterialPageRoute(builder: (_) => AddScreen(albumToEdit: _currentAlbum)),
     );
-    // Always reload because AddScreen uses auto-save and may not return a specific result on back press.
+    // AddScreen은 자동 저장을 사용하고 뒤로 가기 시 특정 결과를 반환하지 않을 수 있으므로 항상 새로 고침.
     if (mounted) {
       _albumWasModified = true;
       final updatedAlbums = await _repository.getAll();
@@ -394,4 +403,8 @@ class _DetailScreenState extends State<DetailScreen> {
       }
     }
   }
+
+  // endregion
 }
+
+// endregion

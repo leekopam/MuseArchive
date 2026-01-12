@@ -12,14 +12,24 @@ import '../models/album.dart';
 import '../models/artist.dart';
 import 'i_album_repository.dart';
 
+/// 앨범 저장소 구현 (Hive 기반)
 class AlbumRepository implements IAlbumRepository {
+  // region 싱글톤 패턴
   static final AlbumRepository _instance = AlbumRepository._internal();
   factory AlbumRepository() => _instance;
   AlbumRepository._internal();
+  //endregion
 
+  // endregion
+
+  // region 상수
   static const String _boxName = 'albumBox';
   static const String _artistBoxName = 'artistBox';
+  //endregion
 
+  // endregion
+
+  // region 초기화 및 리스너
   @override
   Future<void> init() async {
     await Hive.initFlutter();
@@ -29,9 +39,14 @@ class AlbumRepository implements IAlbumRepository {
 
   Box get box => Hive.box(_boxName);
   Box get artistBox => Hive.box(_artistBoxName);
+
   @override
   ValueListenable get listenable => box.listenable();
+  //endregion
 
+  // endregion
+
+  // region CRUD 작업
   @override
   Future<List<Album>> getAll() async {
     return box.values.map((data) => Album.fromMap(data)).toList();
@@ -68,7 +83,7 @@ class AlbumRepository implements IAlbumRepository {
   Future<void> update(String albumId, Album album) async {
     dynamic keyToUpdate;
     Map? oldAlbumMap;
-    // Hive boxes are not guaranteed to be ordered, so we find the key by iterating
+
     for (final key in box.keys) {
       final value = box.get(key) as Map?;
       if (value != null && value['id'] == albumId) {
@@ -80,12 +95,11 @@ class AlbumRepository implements IAlbumRepository {
 
     if (keyToUpdate == null || oldAlbumMap == null) {
       debugPrint("업데이트할 앨범을 찾지 못했습니다: $albumId");
-      return; // or throw an error
+      return;
     }
 
     final oldAlbum = Album.fromMap(oldAlbumMap);
-    var albumToSave =
-        album; // Use a new variable to avoid modifying the parameter
+    var albumToSave = album;
 
     if (oldAlbum.imagePath != album.imagePath && album.imagePath != null) {
       try {
@@ -127,6 +141,7 @@ class AlbumRepository implements IAlbumRepository {
   Future<void> delete(String albumId) async {
     dynamic keyToDelete;
     Map? albumMap;
+
     for (final key in box.keys) {
       final value = box.get(key) as Map?;
       if (value != null && value['id'] == albumId) {
@@ -159,15 +174,9 @@ class AlbumRepository implements IAlbumRepository {
 
   @override
   Future<void> reorder(int oldIndex, int newIndex) async {
-    // NOTE: Removed index adjustment to align with ViewModel logic and fix "Left to Right" bug.
-    // if (oldIndex < newIndex) {
-    //   newIndex -= 1;
-    // }
-
     final album = Album.fromMap(box.getAt(oldIndex));
     await box.deleteAt(oldIndex);
 
-    // insert 대신 putAt 사용
     final allAlbums = await getAll();
     allAlbums.insert(newIndex, album);
 
@@ -176,7 +185,11 @@ class AlbumRepository implements IAlbumRepository {
       await box.add(albumItem.toMap());
     }
   }
+  //endregion
 
+  // endregion
+
+  // region 아티스트 관리
   Future<void> _updateArtistAlbums(
     String artistName,
     String albumId, {
@@ -218,6 +231,151 @@ class AlbumRepository implements IAlbumRepository {
     }
   }
 
+  @override
+  List<Artist> getAllArtists() {
+    return artistBox.values.map((e) => Artist.fromMap(e)).toList();
+  }
+
+  @override
+  List<Album> getAlbumsByArtist(String artistName) {
+    return box.values
+        .map((e) => Album.fromMap(e))
+        .where((album) => album.artist == artistName)
+        .toList();
+  }
+
+  @override
+  Artist? getArtistByName(String artistName) {
+    try {
+      final artistData = artistBox.values.firstWhere(
+        (e) => Artist.fromMap(e).name == artistName,
+        orElse: () => null,
+      );
+      if (artistData != null) {
+        return Artist.fromMap(artistData);
+      }
+    } catch (e) {
+      debugPrint("아티스트 조회 실패: $e");
+    }
+    return null;
+  }
+
+  @override
+  Future<void> updateArtistImage(String artistName, String? imagePath) async {
+    try {
+      dynamic artistKey;
+      Artist? existingArtist;
+
+      for (var key in artistBox.keys) {
+        final artist = Artist.fromMap(artistBox.get(key));
+        if (artist.name == artistName) {
+          artistKey = key;
+          existingArtist = artist;
+          break;
+        }
+      }
+
+      if (artistKey != null && existingArtist != null) {
+        // 기존 이미지 삭제 (새 이미지가 다르거나 null인 경우)
+        if (existingArtist.imagePath != null &&
+            existingArtist.imagePath != imagePath) {
+          final oldFile = File(existingArtist.imagePath!);
+          if (await oldFile.exists()) {
+            await oldFile.delete();
+          }
+        }
+
+        String? newPath = imagePath;
+
+        // 새 이미지 저장
+        if (imagePath != null) {
+          final appDir = await getApplicationDocumentsDirectory();
+          final imagesDir = Directory('${appDir.path}/artist_images');
+          if (!await imagesDir.exists()) {
+            await imagesDir.create(recursive: true);
+          }
+
+          final imageFile = File(imagePath);
+          if (await imageFile.exists()) {
+            final extension = path.extension(imagePath);
+            newPath =
+                '${imagesDir.path}/artist_${existingArtist.id}_${DateTime.now().millisecondsSinceEpoch}$extension';
+            await imageFile.copy(newPath);
+          }
+        }
+
+        final updatedArtist = existingArtist.copyWith(imagePath: newPath);
+        await artistBox.put(artistKey, updatedArtist.toMap());
+      } else {
+        // 아티스트가 없는 경우 생성 (앨범은 없음)
+        // 일반적으로 이 메서드는 이미 존재하는 아티스트에 대해 호출됨
+      }
+    } catch (e) {
+      debugPrint("아티스트 이미지 업데이트 실패: $e");
+    }
+  }
+
+  @override
+  Future<void> updateArtistMetadata(
+    String artistName,
+    List<String> aliases,
+    List<String> groups,
+  ) async {
+    try {
+      dynamic artistKey;
+      Artist? existingArtist;
+
+      for (var key in artistBox.keys) {
+        final artist = Artist.fromMap(artistBox.get(key));
+        if (artist.name == artistName) {
+          artistKey = key;
+          existingArtist = artist;
+          break;
+        }
+      }
+
+      if (artistKey != null && existingArtist != null) {
+        final updatedArtist = existingArtist.copyWith(
+          aliases: aliases,
+          groups: groups,
+        );
+        await artistBox.put(artistKey, updatedArtist.toMap());
+      }
+    } catch (e) {
+      debugPrint("아티스트 메타데이터 업데이트 실패: $e");
+    }
+  }
+
+  @override
+  List<String> getArtistNamesMatching(String query) {
+    if (query.isEmpty) return [];
+
+    final lowerQuery = query.toLowerCase();
+    final matchingNames = <String>{};
+
+    for (var value in artistBox.values) {
+      final artist = Artist.fromMap(value);
+      // 1. 이름 매칭
+      if (artist.name.toLowerCase().contains(lowerQuery)) {
+        matchingNames.add(artist.name);
+        continue; // 이미 추가했으므로 다음 아티스트로
+      }
+
+      // 2. 별명 매칭
+      if (artist.aliases.any(
+        (alias) => alias.toLowerCase().contains(lowerQuery),
+      )) {
+        matchingNames.add(artist.name);
+      }
+    }
+
+    return matchingNames.toList();
+  }
+  //endregion
+
+  // endregion
+
+  // region 쿼리 메서드
   @override
   List<String> getAllFormats() {
     final formats = <String>{};
@@ -288,20 +446,11 @@ class AlbumRepository implements IAlbumRepository {
         .take(10)
         .toList();
   }
+  //endregion
 
-  @override
-  List<Artist> getAllArtists() {
-    return artistBox.values.map((e) => Artist.fromMap(e)).toList();
-  }
+  // endregion
 
-  @override
-  List<Album> getAlbumsByArtist(String artistName) {
-    return box.values
-        .map((e) => Album.fromMap(e))
-        .where((album) => album.artist == artistName)
-        .toList();
-  }
-
+  // region 백업 및 복원
   @override
   Future<String?> exportBackup() async {
     try {
@@ -335,7 +484,32 @@ class AlbumRepository implements IAlbumRepository {
       final zipFile =
           '${tempDir.path}/muse_archive_backup_${DateTime.now().millisecondsSinceEpoch}.zip';
       final encoder = ZipFileEncoder();
-      encoder.zipDirectory(backupDir, filename: zipFile);
+      encoder.create(zipFile);
+
+      if (await albumsFile.exists()) {
+        await encoder.addFile(albumsFile);
+      }
+      if (await artistsFile.exists()) {
+        await encoder.addFile(artistsFile);
+      }
+
+      if (await imagesDir.exists()) {
+        final images = await imagesDir.list().toList();
+        for (var img in images) {
+          if (img is File) {
+            final fileName = path.basename(img.path);
+            await encoder.addFile(img, 'images/$fileName');
+          }
+        }
+      }
+
+      encoder.close();
+
+      final file = File(zipFile);
+      final size = await file.length();
+      if (size <= 22) {
+        throw Exception('백업 파일 생성 실패 (용량 과소: ${size}B)');
+      }
 
       await backupDir.delete(recursive: true);
 
@@ -403,7 +577,6 @@ class AlbumRepository implements IAlbumRepository {
       );
       await extractDir.create();
 
-      // decodeBuffer 대신 decode 사용
       final bytes = await File(zipPath).readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
       extractArchiveToDisk(archive, extractDir.path);
@@ -462,4 +635,6 @@ class AlbumRepository implements IAlbumRepository {
       return false;
     }
   }
+
+  //endregion
 }

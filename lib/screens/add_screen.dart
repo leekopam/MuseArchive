@@ -29,12 +29,13 @@ class _AddScreenState extends State<AddScreen> {
 
   String? _albumId;
 
+  // region 라이프사이클
   @override
   void initState() {
     super.initState();
     _albumId = widget.albumToEdit?.id;
 
-    // Post-frame callback to safely access context and initialize VM
+    // 안전한 컨텍스트 접근을 위한 post-frame 콜백
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _viewModel = context.read<AlbumFormViewModel>();
@@ -42,9 +43,6 @@ class _AddScreenState extends State<AddScreen> {
       _viewModel.addListener(_updateControllers);
       _controllers.setupInitial(context, _viewModel);
       _controllers.addListener(_onFieldChanged);
-
-      // If we are starting with a new album, the VM creates one with a new ID.
-      // We don't set _albumId yet; we wait for the first save.
     });
   }
 
@@ -56,24 +54,11 @@ class _AddScreenState extends State<AddScreen> {
     _controllers.dispose();
     super.dispose();
   }
+  // endregion
 
+  // region 로직 및 이벤트 핸들러
   void _updateControllers() {
-    // Only update from ViewModel if we are not actively editing
-    // or if the change came from an external source (like barcode scan)
-    // This is tricky with two-way binding.
-    // Simplified: We trust _FormControllers to hold the truth while editing.
-    // But if ViewModel changes drastically (e.g. search result loaded), we must update controllers.
-
-    if (_viewModel.isLoading) return; // Don't update while loading
-
-    // We can check specific flags or just update if the ViewModel has "newer" data that wasn't user input.
-    // For now, relies on explicit updates from VM side or careful management.
-    // In this specific architecture, updateControllers is called on VM notify.
-    // We should be careful not to overwrite user input if the user is typing.
-    // But since VM update usually happens on 'save' or 'load', it should be fine.
-
-    // Ideally we'd have a 'source' of change.
-    // For this task, we will just update.
+    if (_viewModel.isLoading) return;
     _controllers.update(_viewModel);
 
     if (mounted) {
@@ -96,9 +81,8 @@ class _AddScreenState extends State<AddScreen> {
     final title = _controllers.title.text.trim();
     final artist = _controllers.artist.text.trim();
 
-    // Checklist Requirement: Require at least Title and Artist.
+    // 제목과 아티스트 필수
     if (title.isEmpty || artist.isEmpty) {
-      // If essential fields are empty, we do NOT create/update the album yet.
       return;
     }
 
@@ -110,7 +94,7 @@ class _AddScreenState extends State<AddScreen> {
 
     await _viewModel.saveAlbum(_albumId);
 
-    // After first save of a new album, capture the ID so future saves are updates, not creates.
+    // 첫 저장 후 ID 업데이트
     if (_albumId == null && _viewModel.currentAlbum != null) {
       if (mounted) {
         setState(() {
@@ -130,12 +114,11 @@ class _AddScreenState extends State<AddScreen> {
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
 
-        // Trigger a final save check before allowing exit
-        // We cancel the debounce to prevent double-save, then save immediately.
+        // 종료 전 최종 저장 확인
+        // 중복 저장을 방지하기 위해 디바운스를 취소하고 즉시 저장합니다.
         if (_debounce?.isActive ?? false) _debounce!.cancel();
 
-        // Only attempt save if there's a title (to avoid error/ghost)
-        // and if there are actual changes
+        // 제목이 있고 실제 변경사항이 있는 경우에만 저장 시도 (오류 방지)
         await _saveIfNeeded();
 
         if (context.mounted) Navigator.pop(context);
@@ -173,7 +156,9 @@ class _AddScreenState extends State<AddScreen> {
       ),
     );
   }
+  // endregion
 
+  // region UI 구성요소
   AppBar _buildAppBar(BuildContext context, AlbumFormViewModel viewModel) {
     return AppBar(
       title: Text(widget.albumToEdit == null ? '앨범 추가' : '앨범 수정'),
@@ -188,7 +173,6 @@ class _AddScreenState extends State<AddScreen> {
           onPressed: () => _showSearchDialog(context, viewModel),
           tooltip: 'Discogs에서 검색',
         ),
-        // Save button removed for auto-save
       ],
     );
   }
@@ -214,7 +198,7 @@ class _AddScreenState extends State<AddScreen> {
               ]),
               _buildSection('세부 정보', [
                 _buildTextField(_controllers.desc, '설명', maxLines: 4),
-                _buildDateField(context), // New Date Picker Field
+                _buildDateField(context), // 날짜 선택 필드 (Date Picker Field)
                 _buildTextField(
                   _controllers.link,
                   '음악 듣기 링크',
@@ -247,7 +231,7 @@ class _AddScreenState extends State<AddScreen> {
                   viewModel.updateCurrentAlbum(
                     viewModel.currentAlbum!.copyWith(isLimited: v),
                   );
-                  _onFieldChanged(); // Trigger auto-save
+                  _onFieldChanged(); // 자동 저장 트리거
                 }),
                 _buildSwitchTile('특이사항', viewModel.currentAlbum!.isSpecial, (
                   v,
@@ -318,7 +302,7 @@ class _AddScreenState extends State<AddScreen> {
                 track: track,
                 viewModel: viewModel,
                 index: index,
-                onChanged: _onFieldChanged, // Pass callback
+                onChanged: _onFieldChanged, // 콜백 전달
               );
             }, childCount: viewModel.currentAlbum!.tracks.length),
             onReorder: (oldIndex, newIndex) {
@@ -336,7 +320,9 @@ class _AddScreenState extends State<AddScreen> {
       ],
     );
   }
+  // endregion
 
+  // region UI 헬퍼
   Widget _buildSection(String title, List<Widget> children) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -367,8 +353,8 @@ class _AddScreenState extends State<AddScreen> {
         controller: controller,
         decoration: InputDecoration(labelText: label, suffixIcon: suffixIcon),
         maxLines: maxLines,
-        // Validation visually hints but doesn't block strictly since we allow loose saving,
-        // but for title we want to ensure it is there for meaningful record.
+        // 유효성 검사는 시각적 힌트만 제공하며 엄격하게 차단하지 않음 (느슨한 저장 허용)
+        // 단, 제목은 의미 있는 레코드를 위해 필수
         validator: isRequired
             ? (value) =>
                   value == null || value.isEmpty ? '$label 필드는 필수입니다.' : null
@@ -397,7 +383,7 @@ class _AddScreenState extends State<AddScreen> {
                 '${picked.year}.${picked.month.toString().padLeft(2, '0')}.${picked.day.toString().padLeft(2, '0')}';
             if (_controllers.date.text != formatted) {
               _controllers.date.text = formatted;
-              // Trigger immediate save for date changes to avoid race conditions with navigation
+              // 날짜 변경 시 즉시 저장하여 탐색 경합 조건 방지
               _saveIfNeeded();
             }
           }
@@ -429,7 +415,9 @@ class _AddScreenState extends State<AddScreen> {
       activeThumbColor: Theme.of(context).colorScheme.primary,
     );
   }
+  // endregion
 
+  // region 기능 메서드
   // --- Actions ---
 
   Future<void> _scanBarcode(
@@ -763,13 +751,11 @@ class _AddScreenState extends State<AddScreen> {
                     '${album['artist']} (${album['release_date']})',
                   ),
                   onTap: () {
-                    // 1. Pop the dialog immediately using its context
+                    // 1. 다이얼로그 즉시 닫기
                     Navigator.pop(dialogContext);
 
                     if (hasImage) {
-                      // 2. Schedule the async update on the next microtask
-                      // using the parent 'context' (AddScreen's context) if needed,
-                      // but here we just need to ensure we don't hold onto dialogContext.
+                      // 2. 비동기 업데이트 예약 (부모 컨텍스트 사용 불필요)
                       Future.microtask(() async {
                         if (mounted) {
                           await viewModel.updateFromSpotify(
@@ -780,7 +766,7 @@ class _AddScreenState extends State<AddScreen> {
                         }
                       });
                     } else {
-                      // Use parent context for snackbar, not dialog's
+                      // 다이얼로그가 아닌 부모 컨텍스트를 사용하여 스낵바 표시
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('이미지가 없는 앨범입니다.')),
@@ -807,9 +793,7 @@ class _AddScreenState extends State<AddScreen> {
     BuildContext context,
     AlbumFormViewModel viewModel,
   ) async {
-    // Reuse the existing search dialog logic but intent is only image
-    // Ideally we duplicate the dialog or refactor, for now let's reuse simple logic
-    // Or just simple title search
+    // 기존 검색 로직 재사용 (이미지만 검색 의도)
     final searchController = TextEditingController(
       text: _controllers.title.text,
     );
@@ -853,10 +837,11 @@ class _AddScreenState extends State<AddScreen> {
     List<dynamic> results,
   ) {
     if (results.isEmpty) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('검색 결과가 없습니다.')));
+      }
       return;
     }
 
@@ -880,14 +865,9 @@ class _AddScreenState extends State<AddScreen> {
               return InkWell(
                 onTap: () async {
                   Navigator.pop(context);
-                  // Need to fetch full details to get high res image?
-                  // Or just use thumb? Often 'thumb' is low res. 'cover_image' might be available in full search
-                  // But search result usually has 'thumb'.
-                  // Let's try to load detailed album first to extract image
+                  // 썸네일 사용 (고해상도 이미지는 상세 조회 필요)
+                  // ID로 상세 정보를 로드하면 다른 입력 정보가 덮어씌워질 수 있으므로 현재는 썸네일 사용
                   if (item['id'] != null) {
-                    // We can reuse loadAlbumById but that overwrites everything.
-                    // We need a helper to just get Image from ID.
-                    // Or just use thumb for now.
                     if (thumb != null) {
                       await viewModel.updateCoverFromUrl(thumb);
                       _onFieldChanged();
@@ -1083,34 +1063,13 @@ class _AddScreenState extends State<AddScreen> {
       },
     );
   }
+
+  // endregion
 }
 
+// region 내부 위젯
 class _ImagePicker extends StatelessWidget {
   final AlbumFormViewModel viewModel;
-  // We need access to the parent state to trigger the modal which is defined in State.
-  // Or better, pass the callback.
-  // But _AddScreenState is private.
-  // We can just find the ancestor state or pass a callback.
-  // The easiest valid way is to modify the constructor or make _ImagePicker part of the main file logic.
-  // Since it's already in the same file, let's just use a callback.
-  // But the replacement block above didn't change the constructor call site (which is in _buildSection).
-  // So I cannot easily add a parameter without changing _buildSection.
-  // Wait, _AddScreenState can just pass the function if I change the call site.
-  // OR, I can move the logic INTO this widget if I pass 'context' (it has context in build).
-  // But _showImageSourceSelection is in _AddScreenState currently (in my proposed code above).
-  // Actually, I pasted the methods INSIDE _AddScreenState (implicitly, by replacing _ImagePicker but wait...
-  // The target lines I selected (644-711) contain the _ImagePicker class definition.
-  // If I overwrite it with methods, I break the file structure if I don't put it in the class.
-  // My bad.
-  // The methods `_showSpotifySearchDialog` etc. should be in `_AddScreenState`.
-  // `_ImagePicker` should be a widget that calls `_showImageSourceSelection`.
-  // I must be careful with placement.
-
-  // Re-evaluating:
-  // I will make `_ImagePicker` accept `VoidCallback onPickImage`.
-  // And in `_buildSection`, I will pass `() => _showImageSourceSelection(context)`.
-
-  // Let's redefine _ImagePicker to accept the callback.
   final VoidCallback onTap;
 
   const _ImagePicker({required this.viewModel, required this.onTap});
@@ -1159,7 +1118,7 @@ class _ImagePicker extends StatelessWidget {
   }
 }
 
-// A dedicated StatefulWidget for each track item to manage its own controllers.
+// 각 트랙 항목의 컨트롤러를 관리하기 위한 전용 Stateful 위젯
 class _TrackListItemWidget extends StatefulWidget {
   final Track track;
   final AlbumFormViewModel viewModel;
@@ -1280,7 +1239,7 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
         ),
       );
     } else {
-      // Calculate track number within the disc
+      // 디스크 내 트랙 번호 계산
       int trackNumberInDisc = 0;
       final tracks = widget.viewModel.currentAlbum!.tracks;
       for (int i = 0; i <= widget.index; i++) {
@@ -1340,7 +1299,9 @@ class _TrackListItemWidgetState extends State<_TrackListItemWidget> {
     }
   }
 }
+// endregion
 
+// region 헬퍼 클래스
 class _FormControllers {
   final title = TextEditingController();
   final titleKr = TextEditingController();
@@ -1403,7 +1364,7 @@ class _FormControllers {
     final album = viewModel.currentAlbum;
     if (album == null) return;
 
-    // The view model's tracks are already up-to-date. We only commit the other fields.
+    // 뷰모델의 트랙 정보는 이미 최신 상태이므로, 다른 필드만 커밋
     viewModel.updateCurrentAlbum(
       album.copyWith(
         title: title.text,
@@ -1455,3 +1416,5 @@ class _FormControllers {
     style.dispose();
   }
 }
+
+// endregion

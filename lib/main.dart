@@ -5,60 +5,60 @@ import 'services/album_repository.dart';
 import 'services/discogs_service.dart';
 import 'services/i_album_repository.dart';
 import 'screens/home_screen.dart';
-import 'services/ocr_service.dart';
 import 'services/theme_manager.dart';
 import 'services/spotify_service.dart';
 import 'utils/theme.dart';
 import 'viewmodels/album_form_viewmodel.dart';
 import 'viewmodels/home_viewmodel.dart';
+import 'viewmodels/global_artist_settings.dart';
 
+// region 앱 초기화
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Instantiate services
+  // 서비스 인스턴스화
   final IAlbumRepository albumRepository = AlbumRepository();
   final DiscogsService discogsService = DiscogsService();
-  final OcrService ocrService = OcrService();
 
-  // Initialize services
+  // 서비스 초기화
   await albumRepository.init();
   await loadTheme();
 
   runApp(
     MultiProvider(
       providers: [
-        // Services
+        // 서비스 프로바이더
         Provider<IAlbumRepository>.value(value: albumRepository),
         Provider<DiscogsService>.value(value: discogsService),
-        Provider<OcrService>.value(value: ocrService),
         Provider<SpotifyService>(create: (_) => SpotifyService()),
 
-        // ViewModels
+        // 뷰모델 프로바이더
         ChangeNotifierProvider(
           create: (context) => HomeViewModel(albumRepository),
         ),
-        ChangeNotifierProxyProvider4<
+        ChangeNotifierProvider(create: (context) => GlobalArtistSettings()),
+        ChangeNotifierProxyProvider3<
           IAlbumRepository,
           DiscogsService,
-          OcrService,
           SpotifyService,
           AlbumFormViewModel
         >(
           create: (context) => AlbumFormViewModel(
             albumRepository,
             discogsService,
-            ocrService,
             SpotifyService(),
           ),
-          update: (context, repo, discogs, ocr, spotify, previous) =>
-              previous ?? AlbumFormViewModel(repo, discogs, ocr, spotify),
+          update: (context, repo, discogs, spotify, previous) =>
+              previous ?? AlbumFormViewModel(repo, discogs, spotify),
         ),
       ],
       child: const MyApp(),
     ),
   );
 }
+// endregion
 
+// region 메인 앱 위젯
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -70,9 +70,13 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           title: 'MuseArchive',
           debugShowCheckedModeBanner: false,
+
+          // 테마 설정
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: currentMode,
+
+          // 로컬라이제이션 설정
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -82,26 +86,29 @@ class MyApp extends StatelessWidget {
           localeResolutionCallback: (locale, supportedLocales) {
             if (locale == null) return supportedLocales.first;
 
-            // Iterate supported locales and check for matches
+            // 완전 일치 확인
             for (var supportedLocale in supportedLocales) {
               if (supportedLocale.languageCode == locale.languageCode &&
                   supportedLocale.countryCode == locale.countryCode) {
                 return supportedLocale;
               }
             }
-            // If no country match, try language match
+
+            // 언어 일치 확인
             for (var supportedLocale in supportedLocales) {
               if (supportedLocale.languageCode == locale.languageCode) {
                 return supportedLocale;
               }
             }
 
-            // Default to supportedLocales.first (Korean) if no match
             return supportedLocales.first;
           },
+
           home: const HomeScreen(),
         );
       },
     );
   }
 }
+
+// endregion

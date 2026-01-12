@@ -2,12 +2,18 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+/// 앨범 커버 이미지 선택 위젯
 class AlbumCoverPicker extends StatelessWidget {
+  // region 필드
   final String? imagePath;
   final ValueChanged<String?> onImageSelected;
   final Color primaryColor;
   final bool isDark;
+  //endregion
 
+  // endregion
+
+  // region 생성자
   const AlbumCoverPicker({
     super.key,
     required this.imagePath,
@@ -15,7 +21,11 @@ class AlbumCoverPicker extends StatelessWidget {
     required this.primaryColor,
     required this.isDark,
   });
+  //endregion
 
+  // endregion
+
+  // region 이미지 선택
   Future<void> _pickImage(BuildContext context) async {
     final source = await showDialog<ImageSource>(
       context: context,
@@ -49,7 +59,11 @@ class AlbumCoverPicker extends StatelessWidget {
       }
     }
   }
+  //endregion
 
+  // endregion
+
+  // region UI 빌드
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -61,9 +75,7 @@ class AlbumCoverPicker extends StatelessWidget {
             width: 110,
             height: 110,
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF2C2518) // Dark Gold/Earth
-                  : const Color(0xFFFFF8E1), // Light Amber
+              color: isDark ? const Color(0xFF2C2518) : const Color(0xFFFFF8E1),
               borderRadius: BorderRadius.circular(12),
               image: imagePath != null
                   ? DecorationImage(
@@ -76,8 +88,8 @@ class AlbumCoverPicker extends StatelessWidget {
                 ? Icon(
                     Icons.album,
                     color: isDark
-                        ? const Color(0xFFD4AF37) // Metallic Gold (Dark mode)
-                        : const Color(0xFFE6C200), // Amber Gold (Light mode)
+                        ? const Color(0xFFD4AF37)
+                        : const Color(0xFFE6C200),
                     size: 50,
                   )
                 : null,
@@ -98,4 +110,6 @@ class AlbumCoverPicker extends StatelessWidget {
       ),
     );
   }
+
+  //endregion
 }
