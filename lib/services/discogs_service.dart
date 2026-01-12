@@ -9,14 +9,24 @@ import '../models/album.dart';
 import '../models/track.dart';
 import '../models/value_objects/release_date.dart';
 
+/// Discogs API 서비스
 class DiscogsService {
+  // region 싱글톤 패턴
   static final DiscogsService _instance = DiscogsService._internal();
   factory DiscogsService() => _instance;
   DiscogsService._internal();
+  //endregion
 
+  // endregion
+
+  // region 상수
   static const String _baseUrl = 'https://api.discogs.com';
   static const String _tokenKey = 'discogs_api_token';
+  //endregion
 
+  // endregion
+
+  // region 인증 및 HTTP 요청
   Future<String?> _getApiToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_tokenKey);
@@ -53,7 +63,11 @@ class DiscogsService {
       return false;
     }
   }
+  //endregion
 
+  // endregion
+
+  // region 검색
   Future<List<Map<String, dynamic>>> searchAlbumsByTitleArtist({
     String? artist,
     String? title,
@@ -73,7 +87,6 @@ class DiscogsService {
         return [];
       }
 
-      // 'q' 파라미터를 사용하여 통합 검색 수행 (더 유연한 검색 결과 제공)
       queryParams['q'] = queryList.join(' ');
 
       final response = await _authenticatedGet(
@@ -90,8 +103,7 @@ class DiscogsService {
               (result) => {
                 'id': result['id'],
                 'title': result['title'] ?? '',
-                'artist':
-                    result['artist'] ?? '', // Add artist to the result map
+                'artist': result['artist'] ?? '',
                 'year': result['year']?.toString() ?? '',
                 'thumb': result['thumb'] ?? '',
                 'format': (result['format'] as List?)?.join(', ') ?? '',
@@ -104,30 +116,6 @@ class DiscogsService {
     }
 
     return [];
-  }
-
-  Future<Album?> fetchAlbumById(int releaseId) async {
-    try {
-      final rawData = await _fetchRawAlbumDetails(releaseId);
-      if (rawData != null) {
-        String? localImagePath;
-        if (rawData['images'] != null &&
-            (rawData['images'] as List).isNotEmpty) {
-          final imageUrl = rawData['images'][0]['resource_url'];
-          if (imageUrl != null) {
-            localImagePath = await downloadAndSaveImage(
-              imageUrl,
-              releaseId.toString(),
-            );
-          }
-        }
-        return _createAlbumFromRawData(rawData, localImagePath);
-      }
-    } catch (e) {
-      debugPrint("Discogs ID 검색 오류: $e");
-    }
-
-    return null;
   }
 
   Future<Album?> fetchAlbumByBarcode(String barcode) async {
@@ -168,7 +156,53 @@ class DiscogsService {
 
     return null;
   }
+  //endregion
 
+  // endregion
+
+  // region 앨범 조회
+  Future<Album?> fetchAlbumById(int releaseId) async {
+    try {
+      final rawData = await _fetchRawAlbumDetails(releaseId);
+      if (rawData != null) {
+        String? localImagePath;
+        if (rawData['images'] != null &&
+            (rawData['images'] as List).isNotEmpty) {
+          final imageUrl = rawData['images'][0]['resource_url'];
+          if (imageUrl != null) {
+            localImagePath = await downloadAndSaveImage(
+              imageUrl,
+              releaseId.toString(),
+            );
+          }
+        }
+        return _createAlbumFromRawData(rawData, localImagePath);
+      }
+    } catch (e) {
+      debugPrint("Discogs ID 검색 오류: $e");
+    }
+
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _fetchRawAlbumDetails(int releaseId) async {
+    try {
+      final response = await _authenticatedGet('/releases/$releaseId');
+
+      if (response != null && response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint("상세 정보 요청 실패: $e");
+    }
+
+    return null;
+  }
+  //endregion
+
+  // endregion
+
+  // region 이미지 다운로드
   Future<String?> downloadAndSaveImage(
     String imageUrl,
     String fileNameBase,
@@ -196,21 +230,11 @@ class DiscogsService {
 
     return null;
   }
+  //endregion
 
-  Future<Map<String, dynamic>?> _fetchRawAlbumDetails(int releaseId) async {
-    try {
-      final response = await _authenticatedGet('/releases/$releaseId');
+  // endregion
 
-      if (response != null && response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
-    } catch (e) {
-      debugPrint("상세 정보 요청 실패: $e");
-    }
-
-    return null;
-  }
-
+  // region 데이터 변환
   Album _createAlbumFromRawData(
     Map<String, dynamic> data,
     String? localImagePath,
@@ -281,4 +305,6 @@ class DiscogsService {
       isLimited: isLimited,
     );
   }
+
+  //endregion
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+// region 텍스트 입력 위젯
 class ModernTextField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
@@ -58,7 +59,10 @@ class ModernTextField extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: primaryColor),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         isDense: true,
         floatingLabelBehavior: FloatingLabelBehavior.auto,
       ),
@@ -74,7 +78,7 @@ class DateTextFormatter extends TextInputFormatter {
   ) {
     final text = newValue.text;
     if (newValue.selection.baseOffset == 0) return newValue;
-    
+
     final buffer = StringBuffer();
     for (int i = 0; i < text.length; i++) {
       buffer.write(text[i]);
@@ -89,7 +93,7 @@ class DateTextFormatter extends TextInputFormatter {
         }
       }
     }
-    
+
     final string = buffer.toString();
     return newValue.copyWith(
       text: string,
@@ -97,7 +101,11 @@ class DateTextFormatter extends TextInputFormatter {
     );
   }
 }
+//endregion
 
+// endregion
+
+// region UI 상태 위젯
 class LoadingOverlay extends StatelessWidget {
   final bool isLoading;
   final Widget child;
@@ -116,83 +124,10 @@ class LoadingOverlay extends StatelessWidget {
         if (isLoading)
           Container(
             color: Colors.black54,
-            child: const Center(
-              child: CircularProgressIndicator(),
-            ),
+            child: const Center(child: CircularProgressIndicator()),
           ),
       ],
     );
-  }
-}
-
-class ErrorSnackBar {
-  static void show(BuildContext context, String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-}
-
-class SuccessSnackBar {
-  static void show(BuildContext context, String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-}
-
-class InfoSnackBar {
-  static void show(BuildContext context, String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.indigo,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-}
-
-class ConfirmDialog {
-  static Future<bool> show(
-    BuildContext context, {
-    required String title,
-    required String content,
-    String confirmText = '확인',
-    String cancelText = '취소',
-  }) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(cancelText),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(confirmText),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
   }
 }
 
@@ -236,3 +171,84 @@ class EmptyState extends StatelessWidget {
     );
   }
 }
+//endregion
+
+// endregion
+
+// region 스낵바 헬퍼
+class ErrorSnackBar {
+  static void show(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+}
+
+class SuccessSnackBar {
+  static void show(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+}
+
+class InfoSnackBar {
+  static void show(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.indigo,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+}
+//endregion
+
+// endregion
+
+// region 다이얼로그 헬퍼
+class ConfirmDialog {
+  static Future<bool> show(
+    BuildContext context, {
+    required String title,
+    required String content,
+    String confirmText = '확인',
+    String cancelText = '취소',
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(content),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(cancelText),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmText),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+}
+
+// endregion

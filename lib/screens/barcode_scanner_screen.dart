@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+// region 바코드 스캐너 메인
 class BarcodeScannerScreen extends StatefulWidget {
   const BarcodeScannerScreen({super.key});
 
@@ -13,12 +14,15 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   bool _isScanned = false;
   bool _isTorchOn = false;
 
+  // region 라이프사이클
   @override
   void dispose() {
     cameraController.dispose();
     super.dispose();
   }
+  // endregion
 
+  // region 이벤트 및 로직
   void _onDetect(BarcodeCapture capture) {
     if (_isScanned) return;
     final List<Barcode> barcodes = capture.barcodes;
@@ -37,7 +41,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
       _isTorchOn = !_isTorchOn;
     });
   }
+  // endregion
 
+  // region 메인 UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,19 +62,13 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
       ),
       body: Stack(
         children: [
-          MobileScanner(
-            controller: cameraController,
-            onDetect: _onDetect,
-          ),
+          MobileScanner(controller: cameraController, onDetect: _onDetect),
           Center(
             child: Container(
               width: 250,
               height: 250,
               decoration: BoxDecoration(
-                border: Border.all(
-                  color: Colors.white,
-                  width: 2,
-                ),
+                border: Border.all(color: Colors.white, width: 2),
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -89,10 +89,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                 ),
                 child: const Text(
                   '바코드를 스캔하세요',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(color: Colors.white, fontSize: 16),
                 ),
               ),
             ),
@@ -102,3 +99,5 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     );
   }
 }
+
+// endregion

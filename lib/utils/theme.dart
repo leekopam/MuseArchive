@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+/// 앱 테마 정의
 class AppTheme {
-  // --- Colors ---
+  // region 색상 정의
   static const Color _primaryLight = Color(0xFF007AFF);
   static const Color _primaryDark = Color(0xFF0A84FF);
 
@@ -20,9 +21,12 @@ class AppTheme {
 
   static const Color _dividerLight = Color(0xFFDCDCDC);
   static const Color _dividerDark = Color(0xFF444446);
+  //endregion
 
-  // --- Text Styles ---
-  static const _fontFamily = 'System'; // This will use the native system font
+  // endregion
+
+  // region 텍스트 스타
+  static const _fontFamily = 'System';
 
   static final TextTheme _textTheme = TextTheme(
     displayLarge: TextStyle(
@@ -43,7 +47,6 @@ class AppTheme {
       fontSize: 22,
       color: _textPrimaryLight,
     ),
-
     headlineMedium: TextStyle(
       fontFamily: _fontFamily,
       fontWeight: FontWeight.w600,
@@ -51,7 +54,6 @@ class AppTheme {
       letterSpacing: 0.15,
       color: _textPrimaryLight,
     ),
-
     titleLarge: TextStyle(
       fontFamily: _fontFamily,
       fontWeight: FontWeight.w600,
@@ -72,7 +74,6 @@ class AppTheme {
       letterSpacing: 0.1,
       color: _textPrimaryLight,
     ),
-
     bodyLarge: TextStyle(
       fontFamily: _fontFamily,
       fontWeight: FontWeight.normal,
@@ -85,7 +86,6 @@ class AppTheme {
       fontSize: 15,
       color: _textSecondaryLight,
     ),
-
     labelLarge: TextStyle(
       fontFamily: _fontFamily,
       fontWeight: FontWeight.bold,
@@ -98,8 +98,11 @@ class AppTheme {
     displayColor: _textPrimaryDark,
     bodyColor: _textSecondaryDark,
   );
+  //endregion
 
-  // --- Themes ---
+  // endregion
+
+  // region 라이트 테마
   static ThemeData get light {
     return ThemeData(
       useMaterial3: true,
@@ -111,11 +114,9 @@ class AppTheme {
       colorScheme: const ColorScheme.light(
         primary: _primaryLight,
         secondary: _primaryLight,
-        // background: _backgroundLight, // Deprecated
         surface: _surfaceLight,
         onPrimary: Colors.white,
         onSecondary: Colors.white,
-        // onBackground: _textPrimaryLight, // Deprecated
         onSurface: _textPrimaryLight,
         error: Colors.redAccent,
         onError: Colors.white,
@@ -179,7 +180,11 @@ class AppTheme {
       ),
     );
   }
+  //endregion
 
+  // endregion
+
+  // region 다크 테마
   static ThemeData get dark {
     return ThemeData(
       useMaterial3: true,
@@ -191,11 +196,9 @@ class AppTheme {
       colorScheme: const ColorScheme.dark(
         primary: _primaryDark,
         secondary: _primaryDark,
-        // background: _backgroundDark, // Deprecated
         surface: _surfaceDark,
         onPrimary: Colors.black,
         onSecondary: Colors.black,
-        // onBackground: _textPrimaryDark, // Deprecated
         onSurface: _textPrimaryDark,
         error: Colors.redAccent,
         onError: Colors.white,
@@ -254,4 +257,6 @@ class AppTheme {
       ),
     );
   }
+
+  //endregion
 }

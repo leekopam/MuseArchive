@@ -2,12 +2,17 @@ import 'package:uuid/uuid.dart';
 import 'track.dart';
 import 'value_objects/release_date.dart';
 
+/// 앨범 데이터 모델
 class Album {
+  // region 핵심 필드
   final String id;
   final String title;
   final String? titleKr;
   final String artist;
   final String description;
+  // endregion
+
+  // region 메타데이터 필드
   final List<String> labels;
   final String? imagePath;
   final List<String> formats;
@@ -16,10 +21,15 @@ class Album {
   final List<String> styles;
   final String? linkUrl;
   final List<Track> tracks;
+  // endregion
+
+  // region 플래그 필드
   final bool isLimited;
   final bool isSpecial;
   final bool isWishlist;
+  // endregion
 
+  // region 생성자
   Album({
     String? id,
     required this.title,
@@ -44,13 +54,18 @@ class Album {
        genres = genres ?? [],
        styles = styles ?? [],
        tracks = tracks ?? [];
+  // endregion
 
+  // region Getter 메서드
   String get label => labels.join(', ');
   String get format => formats.join(', ');
   String get genre => genres.join(', ');
   String get style => styles.join(', ');
   String get releaseDateString => releaseDate.format();
+  // endregion
 
+  // region 직렬화
+  /// Map으로 변환
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -72,6 +87,7 @@ class Album {
     };
   }
 
+  /// Map에서 역직렬화
   factory Album.fromMap(Map<dynamic, dynamic> map) {
     List<Track> safeTracks = [];
     if (map['tracks'] != null) {
@@ -104,7 +120,10 @@ class Album {
       isWishlist: map['isWishlist'] ?? false,
     );
   }
+  // endregion
 
+  // region 불변 복사
+  /// 불변 객체 복사
   Album copyWith({
     String? id,
     String? title,
@@ -142,7 +161,9 @@ class Album {
       isWishlist: isWishlist ?? this.isWishlist,
     );
   }
+  // endregion
 
+  // region 연산자 오버라이드
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
@@ -151,4 +172,5 @@ class Album {
 
   @override
   int get hashCode => id.hashCode;
+  // endregion
 }
