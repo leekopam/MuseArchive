@@ -6,6 +6,7 @@ import '../models/value_objects/release_date.dart';
 import '../services/i_album_repository.dart';
 import '../services/discogs_service.dart';
 import '../services/spotify_service.dart';
+import '../services/vocadb_service.dart';
 
 /// 앨범 폼 뷰모델
 class AlbumFormViewModel extends ChangeNotifier {
@@ -13,6 +14,7 @@ class AlbumFormViewModel extends ChangeNotifier {
   final IAlbumRepository _repository;
   final DiscogsService _discogsService;
   final SpotifyService _spotifyService;
+  final VocadbService _vocadbService;
   //endregion
 
   // endregion
@@ -40,6 +42,7 @@ class AlbumFormViewModel extends ChangeNotifier {
     this._repository,
     this._discogsService,
     this._spotifyService,
+    this._vocadbService,
   );
   //endregion
 
@@ -52,7 +55,7 @@ class AlbumFormViewModel extends ChangeNotifier {
     } else {
       _currentAlbum = Album(
         title: '',
-        artist: '',
+        artists: [],
         releaseDate: ReleaseDate(DateTime.now()),
         isWishlist: isWishlist,
         tracks: [],
@@ -179,7 +182,8 @@ class AlbumFormViewModel extends ChangeNotifier {
         _currentAlbum =
             _currentAlbum?.copyWith(
               title: album.title,
-              artist: album.artist,
+              artists: album.artists,
+              catalogNumber: album.catalogNumber,
               releaseDate: album.releaseDate,
               imagePath: album.imagePath,
               tracks: album.tracks,
@@ -233,21 +237,91 @@ class AlbumFormViewModel extends ChangeNotifier {
     try {
       final album = await _discogsService.fetchAlbumById(releaseId);
       if (album != null) {
-        _currentAlbum = album.copyWith(
-          id: _currentAlbum?.id,
-          isWishlist: _currentAlbum?.isWishlist,
-          description:
-              (album.description.isEmpty &&
-                  _currentAlbum?.description.isNotEmpty == true)
-              ? _currentAlbum!.description
-              : album.description,
-        );
+        _currentAlbum =
+            _currentAlbum?.copyWith(
+              title: album.title,
+              artists: album.artists,
+              catalogNumber: album.catalogNumber,
+              releaseDate: album.releaseDate,
+              imagePath: album.imagePath,
+              tracks: album.tracks,
+              genres: album.genres,
+              styles: album.styles,
+              formats: album.formats,
+              labels: album.labels,
+              description:
+                  (album.description.isEmpty &&
+                      _currentAlbum?.description.isNotEmpty == true)
+                  ? _currentAlbum!.description
+                  : album.description,
+            ) ??
+            album;
         _hasUnsavedChanges = true;
       } else {
         _errorMessage = '앨범 정보를 불러올 수 없습니다.';
       }
     } catch (e) {
       _errorMessage = '앨범 로드 중 오류가 발생했습니다: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+  //endregion
+
+  // endregion
+
+  // region VocaDB 연동
+  Future<List<Map<String, dynamic>>> searchVocadb(String query) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final results = await _vocadbService.searchAlbums(query);
+      return results;
+    } catch (e) {
+      _errorMessage = 'VocaDB 검색 중 오류가 발생했습니다: $e';
+      return [];
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadVocadbAlbumById(int id) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final album = await _vocadbService.fetchAlbumById(id);
+      if (album != null) {
+        _currentAlbum =
+            _currentAlbum?.copyWith(
+              title: album.title,
+              artists: album.artists,
+              catalogNumber: album.catalogNumber,
+              releaseDate: album.releaseDate,
+              imagePath: album.imagePath,
+              tracks: album.tracks,
+              genres: album.genres,
+              styles: album.styles,
+              formats: album.formats,
+              labels: album.labels,
+              description:
+                  (album.description.isEmpty &&
+                      _currentAlbum?.description.isNotEmpty == true)
+                  ? _currentAlbum!.description
+                  : album.description,
+            ) ??
+            album;
+        _hasUnsavedChanges = true;
+      } else {
+        _errorMessage = 'VocaDB 앨범 정보를 불러올 수 없습니다.';
+      }
+    } catch (e) {
+      _errorMessage = 'VocaDB 앨범 로드 중 오류가 발생했습니다: $e';
     } finally {
       _isLoading = false;
       notifyListeners();

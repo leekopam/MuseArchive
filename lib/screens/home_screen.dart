@@ -12,7 +12,6 @@ import 'detail_screen.dart';
 import 'settings_screen.dart';
 import 'all_songs_screen.dart';
 import 'artist_detail_screen.dart';
-import '../models/artist.dart';
 import '../services/i_album_repository.dart';
 
 // region 홈 화면 메인
@@ -659,7 +658,7 @@ class _AlbumCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            album.artist,
+            album.artists.join(', '),
             style: (isCompact ? textTheme.labelSmall : textTheme.bodyMedium)
                 ?.copyWith(
                   color: Colors.white.withValues(alpha: 0.8),
