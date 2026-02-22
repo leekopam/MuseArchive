@@ -1,0 +1,177 @@
+﻿{
+    "artists":  [
+                    {
+                        "artist":  {
+                                       "additionalNames":  "",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  10,
+                                       "name":  "Tripshots",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Approved",
+                                       "version":  22
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "Tripshots",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "Hatsune Miku, 初音未来, Chūyīn Wèilái, 하츠네 미쿠, 初音未來",
+                                       "artistType":  "Vocaloid",
+                                       "deleted":  false,
+                                       "id":  1,
+                                       "name":  "初音ミク",
+                                       "pictureMime":  "image/png",
+                                       "releaseDate":  "2007-08-31T00:00:00Z",
+                                       "status":  "Locked",
+                                       "version":  39
+                                   },
+                        "categories":  "Vocalist",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "初音ミク",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "",
+                                       "artistType":  "OtherVocalist",
+                                       "deleted":  false,
+                                       "id":  286,
+                                       "name":  "Luna",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Finished",
+                                       "version":  2
+                                   },
+                        "categories":  "Vocalist",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  true,
+                        "name":  "Luna",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "カレント, KarenT",
+                                       "artistType":  "Label",
+                                       "deleted":  false,
+                                       "id":  276,
+                                       "name":  "KARENT",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Locked",
+                                       "version":  28
+                                   },
+                        "categories":  "Label",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "KARENT",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "JuruP, xxJulexx",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  1533,
+                                       "name":  "じゅるP",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Finished",
+                                       "version":  15
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  true,
+                        "name":  "じゅるP",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "",
+                                       "artistType":  "OtherVocalist",
+                                       "deleted":  false,
+                                       "id":  865,
+                                       "name":  "mitsumushi",
+                                       "status":  "Finished",
+                                       "version":  2
+                                   },
+                        "categories":  "Vocalist",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  true,
+                        "name":  "mitsumushi",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "yusuke.cc, gamma_at_piapro",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  10360,
+                                       "name":  "yusuke",
+                                       "pictureMime":  "image/png",
+                                       "status":  "Finished",
+                                       "version":  8
+                                   },
+                        "categories":  "Other",
+                        "effectiveRoles":  "Instrumentalist",
+                        "isSupport":  false,
+                        "name":  "yusuke",
+                        "roles":  "Instrumentalist"
+                    }
+                ],
+    "artistString":  "Tripshots feat. 初音ミク",
+    "catalogNumber":  "KRHS-90035",
+    "createDate":  "2011-01-16T00:00:00",
+    "defaultName":  "synthesis",
+    "defaultNameLanguage":  "English",
+    "description":  "",
+    "discType":  "Album",
+    "id":  1,
+    "identifiers":  [
+
+                    ],
+    "name":  "synthesis",
+    "ratingAverage":  4.71,
+    "ratingCount":  14,
+    "releaseDate":  {
+                        "day":  11,
+                        "isEmpty":  false,
+                        "month":  6,
+                        "year":  2009
+                    },
+    "status":  "Approved",
+    "tags":  [
+                 {
+                     "count":  1,
+                     "tag":  {
+                                 "additionalNames":  "デジタルのみ",
+                                 "categoryName":  "Distribution",
+                                 "id":  93,
+                                 "name":  "digital only",
+                                 "urlSlug":  "digital-only"
+                             }
+                 },
+                 {
+                     "count":  1,
+                     "tag":  {
+                                 "additionalNames":  "human vocalist",
+                                 "categoryName":  "Vocalists",
+                                 "id":  198,
+                                 "name":  "human singers",
+                                 "urlSlug":  "human-singers"
+                             }
+                 },
+                 {
+                     "count":  1,
+                     "tag":  {
+                                 "additionalNames":  "トランス, 迷幻舞曲, 出神音乐",
+                                 "categoryName":  "Genres",
+                                 "id":  435,
+                                 "name":  "trance",
+                                 "urlSlug":  "trance"
+                             }
+                 }
+             ],
+    "version":  17
+}

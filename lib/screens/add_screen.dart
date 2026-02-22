@@ -173,6 +173,11 @@ class _AddScreenState extends State<AddScreen> {
           onPressed: () => _showSearchDialog(context, viewModel),
           tooltip: 'Discogs에서 검색',
         ),
+        IconButton(
+          icon: const Icon(Icons.library_music),
+          onPressed: () => _showVocadbSearchDialog(context, viewModel),
+          tooltip: 'VocaDB에서 검색',
+        ),
       ],
     );
   }
@@ -194,7 +199,12 @@ class _AddScreenState extends State<AddScreen> {
                 const SizedBox(height: 16),
                 _buildTextField(_controllers.title, '앨범 제목', isRequired: true),
                 _buildTextField(_controllers.titleKr, '앨범 제목 (한국어)'),
-                _buildTextField(_controllers.artist, '아티스트', isRequired: true),
+                _buildTextField(
+                  _controllers.artist,
+                  '아티스트 (쉼표로 구분)',
+                  isRequired: true,
+                ),
+                _buildTextField(_controllers.catalogNumber, '카탈로그 번호'),
               ]),
               _buildSection('세부 정보', [
                 _buildTextField(_controllers.desc, '설명', maxLines: 4),
@@ -626,6 +636,205 @@ class _AddScreenState extends State<AddScreen> {
                               const SizedBox(height: 6),
                               Text(
                                 '$year · $format',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.6,
+                                  ),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('닫기'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showVocadbSearchDialog(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+  ) async {
+    final searchController = TextEditingController(
+      text: _controllers.title.text.isNotEmpty
+          ? _controllers.title.text
+          : _controllers.artist.text,
+    );
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('VocaDB 앨범 검색'),
+          content: TextField(
+            controller: searchController,
+            decoration: const InputDecoration(labelText: '검색어 (앨범명/아티스트 등)'),
+            autofocus: true,
+            onSubmitted: (value) => Navigator.pop(dialogContext, value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('취소'),
+            ),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, searchController.text),
+              child: const Text('검색'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result.trim().isNotEmpty && mounted) {
+      final searchResults = await viewModel.searchVocadb(result.trim());
+      if (mounted) {
+        _showVocadbSearchResultsDialog(context, viewModel, searchResults);
+      }
+    }
+  }
+
+  Future<void> _showVocadbSearchResultsDialog(
+    BuildContext context,
+    AlbumFormViewModel viewModel,
+    List<dynamic> results,
+  ) async {
+    if (!mounted) return;
+
+    if (results.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('VocaDB 검색 결과가 없습니다.')));
+      return;
+    }
+
+    final theme = Theme.of(context);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('VocaDB 검색 결과', style: theme.textTheme.headlineSmall),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 20.0,
+            horizontal: 8,
+          ),
+          content: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.7,
+            child: ListView.builder(
+              itemCount: results.length,
+              itemBuilder: (context, index) {
+                final result = results[index];
+                final imageUrl = result['thumb'] as String?;
+                final title = result['title'] ?? '제목 없음';
+                final artist = result['artist'] ?? '아티스트 없음';
+                final year = result['year']?.toString() ?? '';
+                final format = result['format'] as String? ?? '';
+
+                return InkWell(
+                  onTap: () async {
+                    final releaseId = result['id'];
+                    if (releaseId != null) {
+                      Navigator.pop(dialogContext);
+                      await viewModel.loadVocadbAlbumById(releaseId);
+                      _onFieldChanged();
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Album Art
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8.0),
+                          child: Container(
+                            width: 80,
+                            height: 80,
+                            color: theme.colorScheme.surface,
+                            child: imageUrl != null && imageUrl.isNotEmpty
+                                ? Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder:
+                                        (context, child, loadingProgress) {
+                                          if (loadingProgress == null)
+                                            return child;
+                                          return Center(
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.0,
+                                              value:
+                                                  loadingProgress
+                                                          .expectedTotalBytes !=
+                                                      null
+                                                  ? loadingProgress
+                                                            .cumulativeBytesLoaded /
+                                                        loadingProgress
+                                                            .expectedTotalBytes!
+                                                  : null,
+                                            ),
+                                          );
+                                        },
+                                    errorBuilder:
+                                        (context, error, stackTrace) => Icon(
+                                          Icons.music_note,
+                                          size: 40,
+                                          color: theme.colorScheme.onSurface
+                                              .withValues(alpha: 0.5),
+                                        ),
+                                  )
+                                : Icon(
+                                    Icons.music_note,
+                                    size: 40,
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.5),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // Album Info
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                artist,
+                                style: theme.textTheme.bodyMedium,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '$year${format.isNotEmpty ? ' · $format' : ''}',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurface.withValues(
                                     alpha: 0.6,
@@ -1313,6 +1522,7 @@ class _FormControllers {
   final format = TextEditingController();
   final genre = TextEditingController();
   final style = TextEditingController();
+  final catalogNumber = TextEditingController();
 
   void setupInitial(BuildContext context, AlbumFormViewModel viewModel) {
     update(viewModel);
@@ -1329,6 +1539,7 @@ class _FormControllers {
     format.addListener(listener);
     genre.addListener(listener);
     style.addListener(listener);
+    catalogNumber.addListener(listener);
   }
 
   void removeListener(VoidCallback listener) {
@@ -1342,6 +1553,7 @@ class _FormControllers {
     format.removeListener(listener);
     genre.removeListener(listener);
     style.removeListener(listener);
+    catalogNumber.removeListener(listener);
   }
 
   void update(AlbumFormViewModel viewModel) {
@@ -1350,7 +1562,7 @@ class _FormControllers {
 
     _updateText(title, album.title);
     _updateText(titleKr, album.titleKr ?? '');
-    _updateText(artist, album.artist);
+    _updateText(artist, album.artists.join(', '));
     _updateText(date, album.releaseDate.format());
     _updateText(desc, album.description);
     _updateText(link, album.linkUrl ?? '');
@@ -1358,6 +1570,7 @@ class _FormControllers {
     _updateText(format, album.formats.join(', '));
     _updateText(genre, album.genres.join(', '));
     _updateText(style, album.styles.join(', '));
+    _updateText(catalogNumber, album.catalogNumber ?? '');
   }
 
   void commitChanges(AlbumFormViewModel viewModel) {
@@ -1369,7 +1582,14 @@ class _FormControllers {
       album.copyWith(
         title: title.text,
         titleKr: titleKr.text,
-        artist: artist.text,
+        artists: artist.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        catalogNumber: catalogNumber.text.trim().isNotEmpty
+            ? catalogNumber.text.trim()
+            : null,
         releaseDate: ReleaseDate.parse(date.text),
         description: desc.text,
         linkUrl: link.text,
@@ -1414,6 +1634,7 @@ class _FormControllers {
     format.dispose();
     genre.dispose();
     style.dispose();
+    catalogNumber.dispose();
   }
 }
 

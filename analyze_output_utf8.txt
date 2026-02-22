@@ -1,0 +1,31 @@
+﻿Analyzing MuseArchive...                                        
+
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:221:54 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:223:46 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:506:36 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:707:40 - use_build_context_synchronously
+   info - Statements in an if should be enclosed in a block - lib\screens\add_screen.dart:782:45 - curly_braces_in_flow_control_structures
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:911:37 - use_build_context_synchronously
+   info - Unnecessary use of multiple underscores - lib\screens\add_screen.dart:955:50 - unnecessary_underscores
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:1038:34 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:1132:44 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:1134:40 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\screens\add_screen.dart:1190:41 - use_build_context_synchronously
+   info - Unnecessary use of multiple underscores - lib\screens\add_screen.dart:1234:50 - unnecessary_underscores
+   info - 'activeColor' is deprecated and shouldn't be used. Use activeTrackColor instead. This feature was deprecated after v3.24.0-0.2.pre - lib\screens\all_songs_screen.dart:282:21 - deprecated_member_use
+   info - Don't invoke 'print' in production code - lib\services\update_service.dart:71:7 - avoid_print
+   info - Don't invoke 'print' in production code - temp_test.dart:7:5 - avoid_print
+   info - Don't invoke 'print' in production code - temp_test.dart:9:5 - avoid_print
+   info - Don't invoke 'print' in production code - temp_test.dart:11:7 - avoid_print
+   info - Don't invoke 'print' in production code - test_fetch.dart:7:7 - avoid_print
+   info - Don't invoke 'print' in production code - test_fetch.dart:10:9 - avoid_print
+   info - Don't invoke 'print' in production code - test_fetch.dart:12:9 - avoid_print
+   info - Don't invoke 'print' in production code - test_fetch.dart:16:5 - avoid_print
+   info - Don't invoke 'print' in production code - test_parsing.dart:28:9 - avoid_print
+   info - Don't invoke 'print' in production code - test_parsing.dart:30:9 - avoid_print
+   info - Don't invoke 'print' in production code - test_parsing.dart:34:7 - avoid_print
+   info - Don't invoke 'print' in production code - test_parsing.dart:37:5 - avoid_print
+   info - Don't invoke 'print' in production code - test_parsing2.dart:34:5 - avoid_print
+   info - Don't invoke 'print' in production code - test_parsing2.dart:36:7 - avoid_print
+   info - Don't invoke 'print' in production code - test_parsing2.dart:39:5 - avoid_print
+
