@@ -186,20 +186,25 @@ class _DetailScreenState extends State<DetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  ArtistDetailScreen(artistName: _currentAlbum.artist),
-            ),
-          ),
-          child: Text(
-            _currentAlbum.artist,
-            style: textTheme.displaySmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: _currentAlbum.artists.asMap().entries.map((entry) {
+            final isLast = entry.key == _currentAlbum.artists.length - 1;
+            return InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ArtistDetailScreen(artistName: entry.value),
+                ),
+              ),
+              child: Text(
+                entry.value + (isLast ? '' : ', '),
+                style: textTheme.displaySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            );
+          }).toList(),
         ),
         const SizedBox(height: 16),
         if (_currentAlbum.linkUrl != null && _currentAlbum.linkUrl!.isNotEmpty)
@@ -220,6 +225,9 @@ class _DetailScreenState extends State<DetailScreen> {
       context,
       child: Column(
         children: [
+          if (_currentAlbum.catalogNumber != null &&
+              _currentAlbum.catalogNumber!.isNotEmpty)
+            _buildInfoRow('카탈로그', _currentAlbum.catalogNumber!),
           _buildInfoRow('레이블', _currentAlbum.label),
           _buildInfoRow('형식', _currentAlbum.format),
           _buildInfoRow('발매일', _currentAlbum.releaseDate.format()),

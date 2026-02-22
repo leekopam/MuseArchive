@@ -31,6 +31,7 @@ class AlbumRepository implements IAlbumRepository {
 
   // region 초기화 및 리스너
   @override
+  @override
   Future<void> init() async {
     await Hive.initFlutter();
     await Hive.openBox(_boxName);
@@ -76,7 +77,7 @@ class AlbumRepository implements IAlbumRepository {
     }
 
     await box.add(album.toMap());
-    await _updateArtistAlbums(album.artist, album.id, isAdding: true);
+    await _updateArtistAlbums(album.artists, album.id, isAdding: true);
   }
 
   @override
@@ -131,9 +132,21 @@ class AlbumRepository implements IAlbumRepository {
 
     await box.put(keyToUpdate, albumToSave.toMap());
 
-    if (oldAlbum.artist != albumToSave.artist) {
-      await _updateArtistAlbums(oldAlbum.artist, albumId, isAdding: false);
-      await _updateArtistAlbums(albumToSave.artist, albumId, isAdding: true);
+    final oldArtists = oldAlbum.artists.toSet();
+    final newArtists = albumToSave.artists.toSet();
+
+    final removedArtists = oldArtists.difference(newArtists);
+    final addedArtists = newArtists.difference(oldArtists);
+
+    if (removedArtists.isNotEmpty) {
+      await _updateArtistAlbums(
+        removedArtists.toList(),
+        albumId,
+        isAdding: false,
+      );
+    }
+    if (addedArtists.isNotEmpty) {
+      await _updateArtistAlbums(addedArtists.toList(), albumId, isAdding: true);
     }
   }
 
@@ -169,7 +182,7 @@ class AlbumRepository implements IAlbumRepository {
     }
 
     await box.delete(keyToDelete);
-    await _updateArtistAlbums(album.artist, album.id, isAdding: false);
+    await _updateArtistAlbums(album.artists, album.id, isAdding: false);
   }
 
   @override
@@ -191,43 +204,45 @@ class AlbumRepository implements IAlbumRepository {
 
   // region 아티스트 관리
   Future<void> _updateArtistAlbums(
-    String artistName,
+    List<String> artistNames,
     String albumId, {
     required bool isAdding,
   }) async {
-    try {
-      dynamic artistKey;
-      for (var key in artistBox.keys) {
-        if (artistBox.get(key)['name'] == artistName) {
-          artistKey = key;
-          break;
-        }
-      }
-
-      if (artistKey != null) {
-        final artist = Artist.fromMap(artistBox.get(artistKey));
-        List<String> albumIds = List.from(artist.albumIds);
-
-        if (isAdding) {
-          if (!albumIds.contains(albumId)) {
-            albumIds.add(albumId);
+    for (var artistName in artistNames) {
+      try {
+        dynamic artistKey;
+        for (var key in artistBox.keys) {
+          if (artistBox.get(key)['name'] == artistName) {
+            artistKey = key;
+            break;
           }
-        } else {
-          albumIds.remove(albumId);
         }
 
-        if (albumIds.isEmpty) {
-          await artistBox.delete(artistKey);
-        } else {
-          final updatedArtist = artist.copyWith(albumIds: albumIds);
-          await artistBox.put(artistKey, updatedArtist.toMap());
+        if (artistKey != null) {
+          final artist = Artist.fromMap(artistBox.get(artistKey));
+          List<String> albumIds = List.from(artist.albumIds);
+
+          if (isAdding) {
+            if (!albumIds.contains(albumId)) {
+              albumIds.add(albumId);
+            }
+          } else {
+            albumIds.remove(albumId);
+          }
+
+          if (albumIds.isEmpty) {
+            await artistBox.delete(artistKey);
+          } else {
+            final updatedArtist = artist.copyWith(albumIds: albumIds);
+            await artistBox.put(artistKey, updatedArtist.toMap());
+          }
+        } else if (isAdding) {
+          final newArtist = Artist(name: artistName, albumIds: [albumId]);
+          await artistBox.add(newArtist.toMap());
         }
-      } else if (isAdding) {
-        final newArtist = Artist(name: artistName, albumIds: [albumId]);
-        await artistBox.add(newArtist.toMap());
+      } catch (e) {
+        debugPrint("아티스트 업데이트 실패: $e");
       }
-    } catch (e) {
-      debugPrint("아티스트 업데이트 실패: $e");
     }
   }
 
@@ -240,7 +255,7 @@ class AlbumRepository implements IAlbumRepository {
   List<Album> getAlbumsByArtist(String artistName) {
     return box.values
         .map((e) => Album.fromMap(e))
-        .where((album) => album.artist == artistName)
+        .where((album) => album.artists.contains(artistName))
         .toList();
   }
 
@@ -420,7 +435,7 @@ class AlbumRepository implements IAlbumRepository {
   List<String> getSmartArtistSuggestions(String query) {
     final lowerQuery = query.toLowerCase();
     final allArtists = box.values
-        .map((e) => Album.fromMap(e).artist)
+        .expand((e) => Album.fromMap(e).artists)
         .toSet()
         .toList();
 

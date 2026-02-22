@@ -279,7 +279,7 @@ class DiscogsService {
 
     return Album(
       title: data['title'] ?? '',
-      artist: artist,
+      artists: [artist],
       description: data['notes'] ?? '',
       labels: data['labels'] != null && (data['labels'] as List).isNotEmpty
           ? (data['labels'] as List).map<String>((l) {

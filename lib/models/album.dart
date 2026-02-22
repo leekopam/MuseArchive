@@ -8,8 +8,10 @@ class Album {
   final String id;
   final String title;
   final String? titleKr;
-  final String artist;
+  final List<String> artists;
+  String get artist => artists.isNotEmpty ? artists.first : '';
   final String description;
+  final String? catalogNumber;
   // endregion
 
   // region 메타데이터 필드
@@ -34,7 +36,8 @@ class Album {
     String? id,
     required this.title,
     this.titleKr,
-    required this.artist,
+    required this.artists,
+    this.catalogNumber,
     this.description = '',
     List<String>? labels,
     this.imagePath,
@@ -71,7 +74,8 @@ class Album {
       'id': id,
       'title': title,
       'titleKr': titleKr,
-      'artist': artist,
+      'artists': artists,
+      'catalogNumber': catalogNumber,
       'description': description,
       'labels': labels,
       'imagePath': imagePath,
@@ -101,11 +105,20 @@ class Album {
       }
     }
 
+    List<String> parsedArtists = [];
+    if (map['artists'] != null) {
+      parsedArtists = List<String>.from(map['artists']);
+    } else if (map['artist'] != null &&
+        map['artist'].toString().trim().isNotEmpty) {
+      parsedArtists = [map['artist'].toString().trim()];
+    }
+
     return Album(
       id: map['id']?.toString(),
       title: map['title'] ?? '',
       titleKr: map['titleKr'],
-      artist: map['artist'] ?? '',
+      artists: parsedArtists,
+      catalogNumber: map['catalogNumber'],
       description: map['description'] ?? '',
       labels: List<String>.from(map['labels'] ?? []),
       imagePath: map['imagePath'],
@@ -128,7 +141,8 @@ class Album {
     String? id,
     String? title,
     String? titleKr,
-    String? artist,
+    List<String>? artists,
+    String? catalogNumber,
     String? description,
     List<String>? labels,
     String? imagePath,
@@ -146,7 +160,8 @@ class Album {
       id: id ?? this.id,
       title: title ?? this.title,
       titleKr: titleKr ?? this.titleKr,
-      artist: artist ?? this.artist,
+      artists: artists ?? this.artists,
+      catalogNumber: catalogNumber ?? this.catalogNumber,
       description: description ?? this.description,
       labels: labels ?? this.labels,
       imagePath: imagePath ?? this.imagePath,
