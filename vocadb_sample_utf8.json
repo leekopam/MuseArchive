@@ -1,0 +1,306 @@
+﻿{
+    "artists":  [
+                    {
+                        "artist":  {
+                                       "additionalNames":  "MuryokuP, Powerless, DJ Powerless, sts",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  161,
+                                       "name":  "無力P",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Approved",
+                                       "version":  37
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "無力P",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "FIFA-P, kisk, kisk_baker, kisk baker, Hattori Keisuke, KeisukeHattori, むぅ, Muu",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  127,
+                                       "name":  "baker",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Approved",
+                                       "version":  28
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "baker",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "Hige Driver",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  1189,
+                                       "name":  "ヒゲドライバー",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Approved",
+                                       "version":  15
+                                   },
+                        "categories":  "Vocalist, Producer",
+                        "effectiveRoles":  "Arranger, Vocalist",
+                        "isSupport":  false,
+                        "name":  "ヒゲドライバー",
+                        "roles":  "Arranger, Vocalist"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "Machigerita, キャンディボウイ, CANDYBOY, CUBE lab., マチゲリータP, NILADMIRARI",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  101,
+                                       "name":  "マチゲリータ",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Approved",
+                                       "version":  36
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "マチゲリータ",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "あぺじ",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  188,
+                                       "name":  "APG550",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Finished",
+                                       "version":  11
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "APG550",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "saiya, 森川夏絃, Morikawa Nao, つんぽっぽ",
+                                       "artistType":  "OtherVocalist",
+                                       "deleted":  false,
+                                       "id":  336,
+                                       "name":  "祭屋",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Finished",
+                                       "version":  15
+                                   },
+                        "categories":  "Vocalist",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "祭屋",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "yu-ki, yuky",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  86,
+                                       "name":  "ゆーきー",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Finished",
+                                       "version":  10
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "ゆーきー",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "Hatsune Miku, 初音未来, Chūyīn Wèilái, 하츠네 미쿠, 初音未來",
+                                       "artistType":  "Vocaloid",
+                                       "deleted":  false,
+                                       "id":  1,
+                                       "name":  "初音ミク",
+                                       "pictureMime":  "image/png",
+                                       "releaseDate":  "2007-08-31T00:00:00Z",
+                                       "status":  "Locked",
+                                       "version":  39
+                                   },
+                        "categories":  "Vocalist",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "初音ミク",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "Megurine Luka, 巡音流歌, 메구리네 루카",
+                                       "artistType":  "Vocaloid",
+                                       "deleted":  false,
+                                       "id":  2,
+                                       "name":  "巡音ルカ",
+                                       "pictureMime":  "image/png",
+                                       "releaseDate":  "2009-01-30T00:00:00Z",
+                                       "status":  "Locked",
+                                       "version":  24
+                                   },
+                        "categories":  "Vocalist",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "巡音ルカ",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "Yuyoyuppe, DJ\u0027TEKINA//SOMETHING, ふにゅ, Funyu, yupeyupe, 間宮丈裕, Mamiya Takehiro, ゆよゆーっぺ",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  6,
+                                       "name":  "ゆよゆっぺ",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Approved",
+                                       "version":  48
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "ゆよゆっぺ",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "",
+                                       "artistType":  "Circle",
+                                       "deleted":  false,
+                                       "id":  5031,
+                                       "name":  "MOtOLOiD",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Finished",
+                                       "version":  12
+                                   },
+                        "categories":  "Circle",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "MOtOLOiD",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "Kagamine Rin, 鏡音鈴, 카가미네 린, 镜音铃",
+                                       "artistType":  "Vocaloid",
+                                       "deleted":  false,
+                                       "id":  14,
+                                       "name":  "鏡音リン",
+                                       "pictureMime":  "image/png",
+                                       "releaseDate":  "2007-12-27T00:00:00Z",
+                                       "status":  "Locked",
+                                       "version":  34
+                                   },
+                        "categories":  "Vocalist",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "鏡音リン",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "グミ, Megpoid, メグッポイド",
+                                       "artistType":  "Vocaloid",
+                                       "deleted":  false,
+                                       "id":  3,
+                                       "name":  "GUMI",
+                                       "pictureMime":  "image/png",
+                                       "releaseDate":  "2009-06-26T00:00:00Z",
+                                       "status":  "Locked",
+                                       "version":  41
+                                   },
+                        "categories":  "Vocalist",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "GUMI",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "Hiroaki",
+                                       "artistType":  "OtherIndividual",
+                                       "deleted":  false,
+                                       "id":  11819,
+                                       "name":  "ひろあき",
+                                       "pictureMime":  "image/jpeg",
+                                       "status":  "Finished",
+                                       "version":  3
+                                   },
+                        "categories":  "Other",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "ひろあき",
+                        "roles":  "Default"
+                    },
+                    {
+                        "artist":  {
+                                       "additionalNames":  "",
+                                       "artistType":  "Producer",
+                                       "deleted":  false,
+                                       "id":  11820,
+                                       "name":  "noreason",
+                                       "status":  "Draft",
+                                       "version":  1
+                                   },
+                        "categories":  "Producer",
+                        "effectiveRoles":  "Default",
+                        "isSupport":  false,
+                        "name":  "noreason",
+                        "roles":  "Default"
+                    }
+                ],
+    "artistString":  "Various artists",
+    "catalogNumber":  "LOID-0001",
+    "createDate":  "2013-01-23T20:20:18",
+    "defaultName":  "Choremix",
+    "defaultNameLanguage":  "English",
+    "description":  "Tribute album to [Yuyoyuppe](http://vocadb.net/Ar/6).",
+    "discType":  "Compilation",
+    "id":  2119,
+    "identifiers":  [
+
+                    ],
+    "name":  "Choremix",
+    "ratingAverage":  4.75,
+    "ratingCount":  8,
+    "releaseDate":  {
+                        "day":  31,
+                        "isEmpty":  false,
+                        "month":  12,
+                        "year":  2012
+                    },
+    "status":  "Finished",
+    "tags":  [
+                 {
+                     "count":  1,
+                     "tag":  {
+                                 "additionalNames":  "リミックス",
+                                 "categoryName":  "Sources",
+                                 "id":  371,
+                                 "name":  "remix",
+                                 "urlSlug":  "remix"
+                             }
+                 },
+                 {
+                     "count":  1,
+                     "tag":  {
+                                 "additionalNames":  "オマージュ, homage",
+                                 "categoryName":  "Themes",
+                                 "id":  3533,
+                                 "name":  "tribute",
+                                 "urlSlug":  "tribute"
+                             }
+                 }
+             ],
+    "version":  13
+}
