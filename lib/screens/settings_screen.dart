@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
+
 import '../services/album_repository.dart';
 import '../services/discogs_service.dart';
 import '../services/spotify_service.dart';
@@ -96,75 +96,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showUpdateDialog(UpdateInfo info) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        return AlertDialog(
-          backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.system_update_alt, color: Colors.blue),
-              const SizedBox(width: 12),
-              const Text('새로운 버전 업데이트'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '새로운 버전 v${info.latestVersion}이 준비되었습니다.',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '업데이트 내용:',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.black26 : Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: SingleChildScrollView(
-                  child: Text(
-                    info.releaseNotes,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDark ? Colors.white70 : Colors.black87,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('나중에'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-                launchUrl(
-                  Uri.parse(info.downloadUrl),
-                  mode: LaunchMode.externalApplication,
-                );
-              },
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text('지금 업데이트'),
-            ),
-          ],
-        );
+        return _UpdateDialog(info: info, updateService: _updateService);
       },
     );
   }
@@ -632,6 +566,150 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+// endregion
+
+// region 업데이트 다이얼로그
+/// 인앱 다운로드 진행률 및 설치를 처리하는 다이얼로그
+class _UpdateDialog extends StatefulWidget {
+  final UpdateInfo info;
+  final UpdateService updateService;
+
+  const _UpdateDialog({required this.info, required this.updateService});
+
+  @override
+  State<_UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<_UpdateDialog> {
+  bool _isDownloading = false;
+  double _progress = 0.0;
+  String? _error;
+
+  Future<void> _startDownload() async {
+    setState(() {
+      _isDownloading = true;
+      _progress = 0.0;
+      _error = null;
+    });
+
+    try {
+      await widget.updateService.downloadAndInstallApk(
+        widget.info.downloadUrl,
+        (progress) {
+          if (mounted) setState(() => _progress = progress);
+        },
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _error = '다운로드 실패: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return AlertDialog(
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Icon(
+            _isDownloading ? Icons.downloading : Icons.system_update_alt,
+            color: Colors.blue,
+          ),
+          const SizedBox(width: 12),
+          Text(_isDownloading ? '다운로드 중...' : '새로운 버전 업데이트'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '새로운 버전 v${widget.info.latestVersion}이 준비되었습니다.',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          if (!_isDownloading) ...[
+            const SizedBox(height: 12),
+            const Text(
+              '업데이트 내용:',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 200),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.black26 : Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  widget.info.releaseNotes,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (_isDownloading) ...[
+            const SizedBox(height: 20),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: _progress,
+                minHeight: 8,
+                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[300],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${(_progress * 100).toStringAsFixed(0)}%',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white70 : Colors.black54,
+              ),
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(color: Colors.red, fontSize: 13),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        if (!_isDownloading)
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('나중에'),
+          ),
+        if (!_isDownloading)
+          FilledButton(
+            onPressed: _startDownload,
+            style: FilledButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('지금 업데이트'),
+          ),
+      ],
     );
   }
 }
