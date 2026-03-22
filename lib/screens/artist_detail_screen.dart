@@ -7,7 +7,9 @@ import '../models/album.dart';
 import '../models/artist.dart';
 import '../viewmodels/artist_viewmodel.dart';
 import '../viewmodels/global_artist_settings.dart';
+import '../services/haptic_service.dart';
 import '../services/i_album_repository.dart';
+import '../widgets/animation_widgets.dart';
 import 'detail_screen.dart';
 
 // region 아티스트 상세 화면 메인
@@ -59,6 +61,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
 
   // region 이미지 선택
   Future<void> _pickImage() async {
+    HapticService.lightTap();
     final viewModel = context.read<ArtistViewModel>();
     final hasImage = viewModel.currentArtist?.imagePath != null;
 
@@ -72,6 +75,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                 leading: const Icon(Icons.photo_library),
                 title: const Text('갤러리에서 선택'),
                 onTap: () async {
+                  HapticService.selection();
                   Navigator.pop(context);
                   final picker = ImagePicker();
                   final pickedFile = await picker.pickImage(
@@ -90,6 +94,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                     style: TextStyle(color: Colors.red),
                   ),
                   onTap: () async {
+                    HapticService.warning();
                     Navigator.pop(context);
                     await viewModel.updateArtistImage(null);
                   },
@@ -127,9 +132,21 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
 
     List<Widget> badges = [];
 
+    // vinyl은 LP로 매핑
+    const formatAliases = {
+      'LP': ['lp', 'vinyl'],
+    };
+
     for (final format in formatPriority) {
+      final aliases = formatAliases[format];
       if (album.formats.any(
-        (f) => f.toLowerCase().contains(format.toLowerCase()),
+        (f) {
+          final lower = f.toLowerCase();
+          if (aliases != null) {
+            return aliases.any((alias) => lower.contains(alias));
+          }
+          return lower.contains(format.toLowerCase());
+        },
       )) {
         badges.add(
           Container(
@@ -222,6 +239,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                           ? '발매일 내림차순 정렬'
                           : '발매일 오름차순 정렬',
                       onPressed: () {
+                        HapticService.toggle();
                         viewModel.toggleSortOrder();
                       },
                     ),
@@ -462,10 +480,11 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
             onTap: isSourceAlbum
                 ? null
                 : () async {
+                    HapticService.lightTap();
                     await Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailScreen(album: album),
+                      AnimatedPageRoute(
+                        page: DetailScreen(album: album),
                       ),
                     );
                     // 돌아올 때 데이터 새로고침
@@ -866,13 +885,13 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                           return GestureDetector(
                             onTap: isExistingArtist
                                 ? () {
+                                    HapticService.lightTap();
                                     Navigator.push(
                                       context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            ArtistDetailScreen(
-                                              artistName: group,
-                                            ),
+                                      AnimatedPageRoute(
+                                        page: ArtistDetailScreen(
+                                          artistName: group,
+                                        ),
                                       ),
                                     );
                                   }

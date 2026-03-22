@@ -8,6 +8,8 @@ import 'screens/home_screen.dart';
 import 'services/theme_manager.dart';
 import 'services/spotify_service.dart';
 import 'services/vocadb_service.dart';
+import 'services/musicbrainz_service.dart';
+import 'services/update_service.dart';
 import 'utils/theme.dart';
 import 'viewmodels/album_form_viewmodel.dart';
 import 'viewmodels/home_viewmodel.dart';
@@ -21,6 +23,9 @@ void main() async {
   final IAlbumRepository albumRepository = AlbumRepository();
   final DiscogsService discogsService = DiscogsService();
   final VocadbService vocadbService = VocadbService();
+  final MusicBrainzService musicBrainzService = MusicBrainzService();
+  final SpotifyService spotifyService = SpotifyService();
+  final UpdateService updateService = UpdateService();
 
   // 서비스 초기화
   await albumRepository.init();
@@ -33,28 +38,48 @@ void main() async {
         Provider<IAlbumRepository>.value(value: albumRepository),
         Provider<DiscogsService>.value(value: discogsService),
         Provider<VocadbService>.value(value: vocadbService),
-        Provider<SpotifyService>(create: (_) => SpotifyService()),
+        Provider<MusicBrainzService>.value(value: musicBrainzService),
+        Provider<SpotifyService>.value(value: spotifyService),
+        Provider<UpdateService>.value(value: updateService),
 
         // 뷰모델 프로바이더
         ChangeNotifierProvider(
           create: (context) => HomeViewModel(albumRepository),
         ),
         ChangeNotifierProvider(create: (context) => GlobalArtistSettings()),
-        ChangeNotifierProxyProvider4<
+        ChangeNotifierProxyProvider5<
           IAlbumRepository,
           DiscogsService,
           SpotifyService,
           VocadbService,
+          MusicBrainzService,
           AlbumFormViewModel
         >(
           create: (context) => AlbumFormViewModel(
             albumRepository,
             discogsService,
-            SpotifyService(),
+            spotifyService,
             vocadbService,
+            musicBrainzService,
           ),
-          update: (context, repo, discogs, spotify, vocadb, previous) =>
-              previous ?? AlbumFormViewModel(repo, discogs, spotify, vocadb),
+          update:
+              (
+                context,
+                repo,
+                discogs,
+                spotify,
+                vocadb,
+                musicBrainz,
+                previous,
+              ) =>
+                  previous ??
+                  AlbumFormViewModel(
+                    repo,
+                    discogs,
+                    spotify,
+                    vocadb,
+                    musicBrainz,
+                  ),
         ),
       ],
       child: const MyApp(),
