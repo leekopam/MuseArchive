@@ -1,12 +1,55 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/album.dart';
 import '../services/i_album_repository.dart';
+import '../services/haptic_service.dart';
 import '../widgets/common_widgets.dart';
+import '../widgets/animation_widgets.dart';
 import 'add_screen.dart';
 import 'artist_detail_screen.dart';
+
+class DetailAppBarStyle {
+  static const Color _expandedActionBackground = Color(0x52000000);
+  static const Color _collapsedLightActionBackground = Color(0x0D000000);
+  static const Color _collapsedDarkActionBackground = Color(0x14FFFFFF);
+
+  const DetailAppBarStyle({
+    required this.foregroundColor,
+    required this.actionBackgroundColor,
+    required this.systemOverlayStyle,
+  });
+
+  final Color foregroundColor;
+  final Color actionBackgroundColor;
+  final SystemUiOverlayStyle systemOverlayStyle;
+
+  static DetailAppBarStyle fromTheme(
+    ThemeData theme, {
+    required bool isCollapsed,
+  }) {
+    if (!isCollapsed) {
+      return const DetailAppBarStyle(
+        foregroundColor: Colors.white,
+        actionBackgroundColor: _expandedActionBackground,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+      );
+    }
+
+    final isDark = theme.brightness == Brightness.dark;
+    return DetailAppBarStyle(
+      foregroundColor: theme.colorScheme.onSurface,
+      actionBackgroundColor: isDark
+          ? _collapsedDarkActionBackground
+          : _collapsedLightActionBackground,
+      systemOverlayStyle: isDark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
+    );
+  }
+}
 
 // region 상세 화면 메인
 class DetailScreen extends StatefulWidget {
@@ -19,22 +62,44 @@ class DetailScreen extends StatefulWidget {
 }
 
 class _DetailScreenState extends State<DetailScreen> {
+  static const double _expandedAppBarHeight = 320.0;
+
   late IAlbumRepository _repository;
+  late final ScrollController _scrollController;
   late Album _currentAlbum;
   bool _albumWasModified = false;
+  bool _isAppBarCollapsed = false;
 
   // region 라이프사이클
   @override
   void initState() {
     super.initState();
     _repository = context.read<IAlbumRepository>();
+    _scrollController = ScrollController()..addListener(_handleScroll);
     _currentAlbum = widget.album;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _handleScroll();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_handleScroll);
+    _scrollController.dispose();
+    super.dispose();
   }
   // endregion
 
   // region 메인 UI
   @override
   Widget build(BuildContext context) {
+    final appBarStyle = DetailAppBarStyle.fromTheme(
+      Theme.of(context),
+      isCollapsed: _isAppBarCollapsed,
+    );
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -43,7 +108,11 @@ class _DetailScreenState extends State<DetailScreen> {
       },
       child: Scaffold(
         body: CustomScrollView(
-          slivers: [_buildSliverAppBar(context), _buildContent(context)],
+          controller: _scrollController,
+          slivers: [
+            _buildSliverAppBar(context, appBarStyle),
+            _buildContent(context),
+          ],
         ),
       ),
     );
@@ -51,68 +120,82 @@ class _DetailScreenState extends State<DetailScreen> {
   // endregion
 
   // region 앱바 빌더
-  SliverAppBar _buildSliverAppBar(BuildContext context) {
+  SliverAppBar _buildSliverAppBar(
+    BuildContext context,
+    DetailAppBarStyle appBarStyle,
+  ) {
+    final theme = Theme.of(context);
+
     return SliverAppBar(
-      expandedHeight: 300.0,
+      expandedHeight: _expandedAppBarHeight,
       pinned: true,
       stretch: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      iconTheme: Theme.of(context).iconTheme,
-      actions: [
-        IconButton(
-          icon: Icon(_currentAlbum.isWishlist ? Icons.star : Icons.star_border),
-          tooltip: _currentAlbum.isWishlist ? '위시리스트에서 제거' : '위시리스트에 추가',
-          onPressed: _toggleWishlistStatus,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      backgroundColor: _isAppBarCollapsed
+          ? theme.scaffoldBackgroundColor
+          : Colors.transparent,
+      systemOverlayStyle: appBarStyle.systemOverlayStyle,
+      leadingWidth: 64,
+      leading: Padding(
+        padding: const EdgeInsetsDirectional.only(start: 12),
+        child: _buildTopBarIconButton(
+          icon: Icons.arrow_back,
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context, _albumWasModified),
+          appBarStyle: appBarStyle,
         ),
-        IconButton(
-          icon: const Icon(Icons.edit_outlined),
-          onPressed: _editAlbum,
+      ),
+      titleSpacing: 0,
+      title: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: _isAppBarCollapsed ? 1 : 0,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.only(end: 8),
+          child: Text(
+            _primaryTitle,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: appBarStyle.foregroundColor,
+              fontWeight: FontWeight.w700,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+      actions: [
+        _buildTopBarIconButton(
+          icon: _currentAlbum.isWishlist ? Icons.star : Icons.star_border,
+          tooltip: _currentAlbum.isWishlist ? '위시리스트에서 제거' : '위시리스트에 추가',
+          onPressed: () {
+            HapticService.toggle();
+            _toggleWishlistStatus();
+          },
+          appBarStyle: appBarStyle,
+        ),
+        _buildTopBarIconButton(
+          icon: Icons.edit_outlined,
+          onPressed: () {
+            HapticService.lightTap();
+            _editAlbum();
+          },
+          appBarStyle: appBarStyle,
           tooltip: '앨범 수정',
         ),
-        IconButton(
-          icon: const Icon(Icons.delete_outline),
-          onPressed: _deleteAlbum,
+        _buildTopBarIconButton(
+          icon: Icons.delete_outline,
+          onPressed: () {
+            HapticService.warning();
+            _deleteAlbum();
+          },
+          appBarStyle: appBarStyle,
           tooltip: '앨범 삭제',
         ),
+        const SizedBox(width: 12),
       ],
       flexibleSpace: FlexibleSpaceBar(
         stretchModes: const [StretchMode.zoomBackground],
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _currentAlbum.titleKr != null && _currentAlbum.titleKr!.isNotEmpty
-                  ? _currentAlbum.titleKr!
-                  : _currentAlbum.title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                fontFamily: '.SF Pro Display',
-                letterSpacing: -0.5,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (_currentAlbum.titleKr != null &&
-                _currentAlbum.titleKr!.isNotEmpty)
-              Text(
-                _currentAlbum.title,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  fontFamily: '.SF Pro Text',
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-          ],
-        ),
-        centerTitle: false,
-        titlePadding: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
         background: Stack(
           fit: StackFit.expand,
           children: [
@@ -138,11 +221,29 @@ class _DetailScreenState extends State<DetailScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.7),
+                  colors: const [
+                    Color(0xA6000000),
+                    Color(0x33000000),
+                    Color(0x14000000),
+                    Color(0xD9000000),
                   ],
-                  stops: const [0.5, 1.0],
+                  stops: const [0.0, 0.18, 0.5, 1.0],
+                ),
+              ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: IgnorePointer(
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 180),
+                      opacity: _isAppBarCollapsed ? 0 : 1,
+                      child: _buildExpandedTitle(theme),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -162,16 +263,25 @@ class _DetailScreenState extends State<DetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(context),
+              FadeSlideIn(child: _buildHeader(context)),
               const SizedBox(height: 24),
-              _buildInfoSection(context),
+              FadeSlideIn(
+                delay: const Duration(milliseconds: 100),
+                child: _buildInfoSection(context),
+              ),
               if (_currentAlbum.description.isNotEmpty) ...[
                 const SizedBox(height: 24),
-                _buildDescriptionSection(context),
+                FadeSlideIn(
+                  delay: const Duration(milliseconds: 200),
+                  child: _buildDescriptionSection(context),
+                ),
               ],
               if (_currentAlbum.tracks.isNotEmpty) ...[
                 const SizedBox(height: 24),
-                _buildTracklistSection(context),
+                FadeSlideIn(
+                  delay: const Duration(milliseconds: 300),
+                  child: _buildTracklistSection(context),
+                ),
               ],
               const SizedBox(height: 40),
             ],
@@ -191,12 +301,15 @@ class _DetailScreenState extends State<DetailScreen> {
           children: _currentAlbum.artists.asMap().entries.map((entry) {
             final isLast = entry.key == _currentAlbum.artists.length - 1;
             return InkWell(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ArtistDetailScreen(artistName: entry.value),
-                ),
-              ),
+              onTap: () {
+                HapticService.lightTap();
+                Navigator.push(
+                  context,
+                  AnimatedPageRoute(
+                    page: ArtistDetailScreen(artistName: entry.value),
+                  ),
+                );
+              },
               child: Text(
                 entry.value + (isLast ? '' : ', '),
                 style: textTheme.displaySmall?.copyWith(
@@ -209,7 +322,10 @@ class _DetailScreenState extends State<DetailScreen> {
         const SizedBox(height: 16),
         if (_currentAlbum.linkUrl != null && _currentAlbum.linkUrl!.isNotEmpty)
           ElevatedButton.icon(
-            onPressed: _launchURL,
+            onPressed: () {
+              HapticService.lightTap();
+              _launchURL();
+            },
             icon: const Icon(Icons.play_circle_fill_outlined),
             label: const Text("음악 듣기"),
             style: ElevatedButton.styleFrom(
@@ -335,6 +451,108 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
+  String get _primaryTitle {
+    if (_currentAlbum.titleKr != null && _currentAlbum.titleKr!.isNotEmpty) {
+      return _currentAlbum.titleKr!;
+    }
+    return _currentAlbum.title;
+  }
+
+  String? get _secondaryTitle {
+    if (_currentAlbum.titleKr != null && _currentAlbum.titleKr!.isNotEmpty) {
+      return _currentAlbum.title;
+    }
+    return null;
+  }
+
+  void _handleScroll() {
+    if (!mounted || !_scrollController.hasClients) return;
+
+    final collapseThreshold =
+        _expandedAppBarHeight -
+        kToolbarHeight -
+        MediaQuery.paddingOf(context).top;
+    final shouldCollapse = _scrollController.offset > collapseThreshold;
+
+    if (shouldCollapse != _isAppBarCollapsed) {
+      setState(() {
+        _isAppBarCollapsed = shouldCollapse;
+      });
+    }
+  }
+
+  Widget _buildTopBarIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+    required DetailAppBarStyle appBarStyle,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        foregroundColor: appBarStyle.foregroundColor,
+        backgroundColor: appBarStyle.actionBackgroundColor,
+      ),
+      icon: Icon(icon),
+    );
+  }
+
+  Widget _buildExpandedTitle(ThemeData theme) {
+    final textTheme = theme.textTheme;
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0x33111111),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _primaryTitle,
+            style: textTheme.titleLarge?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              shadows: const [
+                Shadow(
+                  color: Color(0xAA000000),
+                  blurRadius: 16,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (_secondaryTitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              _secondaryTitle!,
+              style: textTheme.bodyMedium?.copyWith(
+                color: const Color(0xD9FFFFFF),
+                shadows: const [
+                  Shadow(
+                    color: Color(0xAA000000),
+                    blurRadius: 12,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   // endregion
 
   // region 기능 메서드
@@ -371,7 +589,7 @@ class _DetailScreenState extends State<DetailScreen> {
   Future<void> _editAlbum() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => AddScreen(albumToEdit: _currentAlbum)),
+      AnimatedPageRoute(page: AddScreen(albumToEdit: _currentAlbum)),
     );
     // AddScreen은 자동 저장을 사용하고 뒤로 가기 시 특정 결과를 반환하지 않을 수 있으므로 항상 새로 고침.
     if (mounted) {
@@ -404,9 +622,13 @@ class _DetailScreenState extends State<DetailScreen> {
 
   Future<void> _launchURL() async {
     if (_currentAlbum.linkUrl != null && _currentAlbum.linkUrl!.isNotEmpty) {
-      final Uri url = Uri.parse(_currentAlbum.linkUrl!);
-      if (!mounted) return;
-      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      try {
+        final Uri url = Uri.parse(_currentAlbum.linkUrl!);
+        if (!mounted) return;
+        if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+          if (mounted) ErrorSnackBar.show(context, '링크를 열 수 없습니다.');
+        }
+      } catch (e) {
         if (mounted) ErrorSnackBar.show(context, '링크를 열 수 없습니다.');
       }
     }

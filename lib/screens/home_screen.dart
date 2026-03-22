@@ -7,6 +7,8 @@ import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../models/album.dart';
 import '../viewmodels/home_viewmodel.dart';
 import '../widgets/common_widgets.dart';
+import '../widgets/animation_widgets.dart';
+import '../services/haptic_service.dart';
 import 'add_screen.dart';
 import 'detail_screen.dart';
 import 'settings_screen.dart';
@@ -58,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onSegmentChanged(AlbumView? value) {
     if (value != null) {
+      HapticService.toggle();
       final viewModel = context.read<HomeViewModel>();
       viewModel.setView(value);
       _pageController.animateToPage(
@@ -71,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<HomeViewModel>();
+    final repository = context.read<IAlbumRepository>();
     final theme = Theme.of(context);
 
     // 외부 변경이 발생하면 PageController 동기화 (하지만 엄밀히 말하면 VM이 이제 onSegmentChanged를 통해 이를 구동함)
@@ -79,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: _HomeAppBar(viewModel: viewModel),
+      appBar: _HomeAppBar(viewModel: viewModel, repository: repository),
       body: LoadingOverlay(
         isLoading: viewModel.isLoading,
         child: Column(
@@ -113,8 +117,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 controller: _pageController,
                 onPageChanged: _onPageChanged,
                 children: [
-                  _buildContent(context, viewModel, AlbumView.collection),
-                  _buildContent(context, viewModel, AlbumView.wishlist),
+                  _buildContent(
+                    context,
+                    viewModel,
+                    repository,
+                    AlbumView.collection,
+                  ),
+                  _buildContent(
+                    context,
+                    viewModel,
+                    repository,
+                    AlbumView.wishlist,
+                  ),
                 ],
               ),
             ),
@@ -131,11 +145,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildContent(
     BuildContext context,
     HomeViewModel viewModel,
+    IAlbumRepository repository,
     AlbumView view,
   ) {
     switch (viewModel.viewMode) {
       case ViewMode.artists:
-        return _buildArtistList(context, viewModel, view);
+        return _buildArtistList(context, viewModel, repository, view);
       case ViewMode.grid3:
         return _buildAlbumGrid(context, viewModel, view, 3);
       case ViewMode.grid2:
@@ -146,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildArtistList(
     BuildContext context,
     HomeViewModel viewModel,
+    IAlbumRepository repository,
     AlbumView view,
   ) {
     // 현재 뷰에 맞는 아티스트 리스트 가져오기 (HomeViewModel에서 로직 처리됨)
@@ -185,62 +201,64 @@ class _HomeScreenState extends State<HomeScreen> {
         final albumCount = albums.where((a) => a.artist == artistName).length;
 
         // 아티스트 정보를 Repository에서 조회 (이미지 확인용)
-        final repository = context.read<IAlbumRepository>();
         final artist = repository.getArtistByName(artistName);
 
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(vertical: 4),
-          leading: Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ClipOval(
-              child:
-                  artist?.imagePath != null &&
-                      File(artist!.imagePath!).existsSync()
-                  ? Image.file(File(artist.imagePath!), fit: BoxFit.cover)
-                  : Container(
-                      color: Colors.grey[300],
-                      child: const Icon(Icons.person, color: Colors.white),
-                    ),
-            ),
-          ),
-          title: Text(
-            artistName,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          subtitle: Text(
-            '$albumCount Albums',
-            style: TextStyle(
-              color: Theme.of(
-                context,
-              ).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
-              fontSize: 13,
-            ),
-          ),
-          trailing: const Icon(
-            Icons.chevron_right,
-            color: Colors.grey,
-            size: 20,
-          ),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    ArtistDetailScreen(artistName: artistName),
+        return FadeSlideIn.staggered(
+          index: index,
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(vertical: 4),
+            leading: Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-            );
-          },
+              child: ClipOval(
+                child:
+                    artist?.imagePath != null &&
+                        File(artist!.imagePath!).existsSync()
+                    ? Image.file(File(artist.imagePath!), fit: BoxFit.cover)
+                    : Container(
+                        color: Colors.grey[300],
+                        child: const Icon(Icons.person, color: Colors.white),
+                      ),
+              ),
+            ),
+            title: Text(
+              artistName,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            subtitle: Text(
+              '$albumCount Albums',
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+                fontSize: 13,
+              ),
+            ),
+            trailing: const Icon(
+              Icons.chevron_right,
+              color: Colors.grey,
+              size: 20,
+            ),
+            onTap: () {
+              HapticService.lightTap();
+              Navigator.push(
+                context,
+                AnimatedPageRoute(
+                  page: ArtistDetailScreen(artistName: artistName),
+                ),
+              );
+            },
+          ),
         );
       },
     );
@@ -304,7 +322,10 @@ class _HomeScreenState extends State<HomeScreen> {
       itemCount: albums.length,
       itemBuilder: (context, index) {
         final album = albums[index];
-        return _AlbumCard(album: album, isCompact: crossAxisCount == 3);
+        return FadeSlideIn.staggered(
+          index: index,
+          child: _AlbumCard(album: album, isCompact: crossAxisCount == 3),
+        );
       },
     );
   }
@@ -313,9 +334,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
 // region 앱바 위젯
 class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _HomeAppBar({required this.viewModel});
+  const _HomeAppBar({required this.viewModel, required this.repository});
 
   final HomeViewModel viewModel;
+  final IAlbumRepository repository;
 
   @override
   Widget build(BuildContext context) {
@@ -340,7 +362,10 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           actions: [
             IconButton(
               icon: Icon(viewModel.isSearching ? Icons.close : Icons.search),
-              onPressed: viewModel.toggleSearch,
+              onPressed: () {
+                HapticService.lightTap();
+                viewModel.toggleSearch();
+              },
               tooltip: '검색',
             ),
             IconButton(
@@ -351,7 +376,10 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                     ? Icons.people_alt_outlined
                     : Icons.grid_view_rounded,
               ),
-              onPressed: viewModel.toggleViewMode,
+              onPressed: () {
+                HapticService.toggle();
+                viewModel.toggleViewMode();
+              },
               tooltip: viewModel.viewMode == ViewMode.grid2
                   ? '3열 그리드로 보기'
                   : viewModel.viewMode == ViewMode.grid3
@@ -360,8 +388,10 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
-              onPressed: () =>
-                  _navigateToAddScreen(context, viewModel.currentView),
+              onPressed: () {
+                HapticService.lightTap();
+                _navigateToAddScreen(context, viewModel.currentView);
+              },
               tooltip: '앨범 추가',
             ),
             _buildMoreMenu(context, viewModel),
@@ -374,6 +404,7 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget _buildMoreMenu(BuildContext context, HomeViewModel viewModel) {
     return PopupMenuButton<String>(
       onSelected: (value) {
+        HapticService.selection();
         switch (value) {
           case 'sort':
             _showSortOptions(context, viewModel);
@@ -384,13 +415,15 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           case 'all_songs':
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const AllSongsScreen()),
+              AnimatedPageRoute(
+                page: AllSongsScreen(repository: repository),
+              ),
             );
             break;
           case 'settings':
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              AnimatedPageRoute(page: const SettingsScreen()),
             );
             break;
         }
@@ -454,18 +487,23 @@ class _AlbumCard extends StatelessWidget {
     // 재정렬 모드인 경우 ReorderableGridView가 사용할 수 있도록 사용자 지정 onLongPress를 비활성화합니다.
     final canShowMenu = !viewModel.isReorderMode;
 
-    return GestureDetector(
+    return TapScaleWrapper(
+      enabled: canShowMenu,
       onTap: () async {
+        HapticService.lightTap();
         final result = await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => DetailScreen(album: album)),
+          AnimatedPageRoute(page: DetailScreen(album: album)),
         );
         if (result == true) {
           viewModel.loadAlbums();
         }
       },
       onLongPress: canShowMenu
-          ? () => _showMoveAlbumSheet(context, album, viewModel)
+          ? () {
+              HapticService.dragStart();
+              _showMoveAlbumSheet(context, album, viewModel);
+            }
           : null,
       child: Card(
         clipBehavior: Clip.antiAlias,
@@ -530,6 +568,7 @@ class _AlbumCard extends StatelessWidget {
                     ),
                     title: Text(isWishlist ? '컬렉션으로 이동' : '위시리스트로 이동'),
                     onTap: () async {
+                      HapticService.selection();
                       Navigator.pop(builderContext);
                       await viewModel.toggleWishlistStatus(album.id);
 
@@ -560,6 +599,7 @@ class _AlbumCard extends StatelessWidget {
                       style: TextStyle(color: Colors.red),
                     ),
                     onTap: () {
+                      HapticService.warning();
                       Navigator.pop(builderContext);
                       showDialog(
                         context: context,
@@ -683,10 +723,20 @@ class _AlbumCard extends StatelessWidget {
 
     List<Widget> badges = [];
 
+    // vinyl은 LP로 매핑
+    const formatAliases = {
+      'LP': ['lp', 'vinyl'],
+    };
+
     for (final format in formatPriority) {
-      if (album.formats.any(
-        (f) => f.toLowerCase().contains(format.toLowerCase()),
-      )) {
+      final aliases = formatAliases[format];
+      if (album.formats.any((f) {
+        final lower = f.toLowerCase();
+        if (aliases != null) {
+          return aliases.any((alias) => lower.contains(alias));
+        }
+        return lower.contains(format.toLowerCase());
+      })) {
         badges.add(
           _Badge(
             label: format,
@@ -762,9 +812,8 @@ class _Badge extends StatelessWidget {
 void _navigateToAddScreen(BuildContext context, AlbumView currentView) {
   Navigator.push(
     context,
-    MaterialPageRoute(
-      builder: (context) =>
-          AddScreen(isWishlist: currentView == AlbumView.wishlist),
+    AnimatedPageRoute(
+      page: AddScreen(isWishlist: currentView == AlbumView.wishlist),
     ),
   );
 }
@@ -817,6 +866,7 @@ void _showSortOptions(BuildContext context, HomeViewModel viewModel) async {
   );
 
   if (selected != null) {
+    HapticService.selection();
     viewModel.setSortOption(selected);
   }
 }

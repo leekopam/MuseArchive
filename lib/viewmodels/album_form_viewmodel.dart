@@ -7,6 +7,7 @@ import '../services/i_album_repository.dart';
 import '../services/discogs_service.dart';
 import '../services/spotify_service.dart';
 import '../services/vocadb_service.dart';
+import '../services/musicbrainz_service.dart';
 
 /// 앨범 폼 뷰모델
 class AlbumFormViewModel extends ChangeNotifier {
@@ -15,6 +16,7 @@ class AlbumFormViewModel extends ChangeNotifier {
   final DiscogsService _discogsService;
   final SpotifyService _spotifyService;
   final VocadbService _vocadbService;
+  final MusicBrainzService _musicBrainzService;
   //endregion
 
   // endregion
@@ -43,6 +45,7 @@ class AlbumFormViewModel extends ChangeNotifier {
     this._discogsService,
     this._spotifyService,
     this._vocadbService,
+    this._musicBrainzService,
   );
   //endregion
 
@@ -164,7 +167,7 @@ class AlbumFormViewModel extends ChangeNotifier {
   }
 
   Future<bool> isSpotifyConfigured() async {
-    return true;
+    return _spotifyService.hasConfiguredCredentials();
   }
   //endregion
 
@@ -322,6 +325,68 @@ class AlbumFormViewModel extends ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = 'VocaDB 앨범 로드 중 오류가 발생했습니다: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+  //endregion
+
+  // endregion
+
+  // region MusicBrainz 연동
+  Future<List<Map<String, dynamic>>> searchMusicBrainz(String query) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final results = await _musicBrainzService.searchAlbums(query);
+      return results;
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _errorMessage = msg;
+      return [];
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadMusicBrainzAlbumById(String mbid) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final album = await _musicBrainzService.fetchAlbumById(mbid);
+      if (album != null) {
+        _currentAlbum =
+            _currentAlbum?.copyWith(
+              title: album.title,
+              artists: album.artists,
+              catalogNumber: album.catalogNumber,
+              releaseDate: album.releaseDate,
+              imagePath: album.imagePath,
+              tracks: album.tracks,
+              genres: album.genres,
+              styles: album.styles,
+              formats: album.formats,
+              labels: album.labels,
+              description:
+                  (album.description.isEmpty &&
+                      _currentAlbum?.description.isNotEmpty == true)
+                  ? _currentAlbum!.description
+                  : album.description,
+            ) ??
+            album;
+        _hasUnsavedChanges = true;
+      } else {
+        _errorMessage = 'MusicBrainz 앨범 정보를 불러올 수 없습니다.';
+      }
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _errorMessage = msg;
     } finally {
       _isLoading = false;
       notifyListeners();

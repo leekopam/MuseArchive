@@ -14,6 +14,8 @@ class SpotifyService {
   // endregion
 
   // region 상수
+  static const String clientIdPrefsKey = 'spotify_client_id';
+  static const String clientSecretPrefsKey = 'spotify_client_secret';
   static const String _authUrl = 'https://accounts.spotify.com/api/token';
   static const String _baseUrl = 'https://api.spotify.com/v1';
   //endregion
@@ -36,8 +38,8 @@ class SpotifyService {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final clientId = prefs.getString('spotify_client_id');
-    final clientSecret = prefs.getString('spotify_client_secret');
+    final clientId = prefs.getString(clientIdPrefsKey);
+    final clientSecret = prefs.getString(clientSecretPrefsKey);
 
     if (clientId == null ||
         clientId.isEmpty ||
@@ -73,6 +75,13 @@ class SpotifyService {
       debugPrint("Spotify Auth Error: $e");
     }
     return null;
+  }
+
+  Future<bool> hasConfiguredCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final clientId = prefs.getString(clientIdPrefsKey)?.trim() ?? '';
+    final clientSecret = prefs.getString(clientSecretPrefsKey)?.trim() ?? '';
+    return clientId.isNotEmpty && clientSecret.isNotEmpty;
   }
 
   Future<bool> testConnection() async {
