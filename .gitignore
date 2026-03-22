@@ -43,3 +43,25 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local scratch and investigation artifacts
+/temp_*.dart
+/temp_*.json
+/test_fetch.dart
+/test_parsing*.dart
+/vocadb_sample*.json
+/analyze_output*.txt
+/testsprite*.tar
+
+# Generated QA and local IDE artifacts
+/docs/qa/testsprite/tmp/
+/docs/qa/testsprite/cache/
+/docs/qa/testsprite/artifacts/
+/android/.kotlin/
+/android/key.properties
+/android/*.jks
+/android/*.keystore
+/android/**/*.jks
+/android/**/*.keystore
+/test/.idea/
+/\.claude/

@@ -1,7 +1,34 @@
 {
   "permissions": {
     "allow": [
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(grep -r \"versionCode\\\\|versionName\" /d/Project/01_Personal/MuseArchive/android --include=*.gradle* --include=*.kt)",
+      "Bash(flutter analyze:*)",
+      "Bash(cmd.exe /c \"flutter analyze lib/services/musicbrainz_service.dart lib/viewmodels/album_form_viewmodel.dart lib/main.dart lib/screens/add_screen.dart 2>&1\")",
+      "Bash(cmd.exe /c \"cd /d D:\\\\Project\\\\01_Personal\\\\MuseArchive && flutter analyze 2>&1\")",
+      "Bash(powershell -Command \"cd D:\\\\Project\\\\01_Personal\\\\MuseArchive; flutter analyze 2>&1\")",
+      "Bash(where.exe flutter:*)",
+      "Read(//d/Project/01_Personal/MuseArchive/$LOCALAPPDATA/**)",
+      "Read(//d/Project/01_Personal/MuseArchive/$HOME/**)",
+      "Read(//c/Users/flzhv/**)",
+      "Read(//d//**)",
+      "Read(//c/flutter/**)",
+      "Read(//c/src/**)",
+      "Bash(D:/flutter/bin/flutter analyze:*)",
+      "WebFetch(domain:musicbrainz.org)",
+      "Bash(dart analyze:*)",
+      "Bash(cmd.exe /c \"where flutter\")",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(powershell.exe -Command \"flutter analyze lib/ 2>&1\")",
+      "Bash(reg query:*)",
+      "Bash(find /c/Users/flzhv/AppData/Local/Pub/Cache -name transitions.dart -path */widgets/*)",
+      "Bash(find /c/Users/flzhv -path */flutter/src/widgets/transitions.dart)",
+      "Bash(powershell.exe -Command \"Get-ChildItem -Path ''C:\\\\'' -Filter ''flutter.bat'' -Recurse -Depth 4 -ErrorAction SilentlyContinue | Select-Object -First 3 -ExpandProperty FullName\")",
+      "Bash(/c/flutter/flutter/bin/flutter analyze:*)",
+      "Bash(/c/flutter/flutter/bin/flutter build:*)",
+      "Bash(/c/flutter/flutter/bin/flutter.bat test:*)",
+      "Bash(/c/flutter/flutter/bin/flutter.bat analyze:*)"
     ]
   }
 }

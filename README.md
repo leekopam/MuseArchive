@@ -1,3 +1,9 @@
 # MuseArchive
 
-소장중인 앨범들 정리용으로 제작
+MuseArchive is a Flutter app for cataloging albums and wishlists.
+
+## Project Layout
+
+- `lib/`: application source code
+- `test/`: automated tests
+- `docs/qa/testsprite/`: reviewed QA planning references and guidance
