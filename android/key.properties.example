@@ -1,0 +1,11 @@
+# Copy this file to android/key.properties and replace the placeholder values.
+# Or generate both files at once with:
+#   .\scripts\android\New-AndroidReleaseKeystore.ps1
+# The script will prompt for passwords securely if you do not pass them inline.
+# storeFile may be a relative path from the android/ directory or an absolute path.
+# If musearchive.requireReleaseSigning=true, the configured file must exist or
+# the build will fail instead of falling back to debug signing.
+storeFile=upload-keystore.jks
+storePassword=replace-with-store-password
+keyAlias=upload
+keyPassword=replace-with-key-password

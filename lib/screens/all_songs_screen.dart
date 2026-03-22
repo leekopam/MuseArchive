@@ -3,11 +3,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/album.dart';
 import '../models/track.dart';
-import '../services/album_repository.dart';
+import '../services/haptic_service.dart';
+import '../services/i_album_repository.dart';
 import 'detail_screen.dart';
 
-// region 전체 곡 목록 화면 메인
 // region 헬퍼 클래스
+
 // 트랙과 부모 앨범에 대한 참조를 보유하는 도우미 클래스
 class _SongWithAlbumRef {
   final Track track;
@@ -15,28 +16,62 @@ class _SongWithAlbumRef {
 
   _SongWithAlbumRef({required this.track, required this.album});
 }
+
+// 동일 곡이 여러 앨범에 수록된 경우를 그룹화하는 도우미 클래스
+class _SongGroup {
+  final String title;
+  final String artistName;
+  final String? titleKr;
+  final List<_SongWithAlbumRef> entries;
+
+  _SongGroup({
+    required this.title,
+    required this.artistName,
+    this.titleKr,
+    required this.entries,
+  });
+
+  int get albumCount => entries.length;
+  bool get isSingle => entries.length == 1;
+
+  // 대표 앨범 (위시리스트가 아닌 첫 앨범 우선)
+  Album get primaryAlbum =>
+      entries
+          .cast<_SongWithAlbumRef?>()
+          .firstWhere((e) => !e!.album.isWishlist, orElse: () => null)
+          ?.album ??
+      entries.first.album;
+
+  bool get isAllWishlist => entries.every((e) => e.album.isWishlist);
+}
+
 // endregion
 
+// region 전체 곡 목록 화면 메인
+
 class AllSongsScreen extends StatefulWidget {
-  const AllSongsScreen({super.key});
+  final IAlbumRepository repository;
+
+  const AllSongsScreen({super.key, required this.repository});
 
   @override
   State<AllSongsScreen> createState() => _AllSongsScreenState();
 }
 
 class _AllSongsScreenState extends State<AllSongsScreen> {
-  final AlbumRepository _repository = AlbumRepository();
+  late final IAlbumRepository _repository;
   final List<_SongWithAlbumRef> _allSongs = [];
-  List<_SongWithAlbumRef> _filteredSongs = [];
-  bool _isLoading = true; // 로딩 true로 시작
+  List<_SongGroup> _filteredGroups = [];
+  bool _isLoading = true;
   String _searchQuery = '';
-  bool _includeWishlist = false; // 위시리스트 포함 여부 (기본값: false)
+  bool _includeWishlist = false;
   final TextEditingController _searchController = TextEditingController();
 
   // region 라이프사이클
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository;
     _loadAllSongs();
     _searchController.addListener(() {
       if (_searchQuery != _searchController.text) {
@@ -75,8 +110,6 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
 
   // region 데이터 로드
   Future<void> _loadAllSongs() async {
-    // 처음부터 true이면 로딩을 true로 설정할 필요가 없습니다.
-    // 한 번만 로드하는 경우. 당겨서 새로고침이 추가되면 이 로직이 변경됩니다.
     try {
       final albums = await _repository.getAll();
       _allSongs.clear();
@@ -102,66 +135,88 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   }
   // endregion
 
+  // region 필터링 및 그룹화
   void _filterSongs() {
+    List<_SongWithAlbumRef> filtered;
+
     if (_searchQuery.isEmpty) {
-      _filteredSongs = List.from(_allSongs);
+      filtered = List.from(_allSongs);
     } else {
       final lowerQuery = _searchQuery.toLowerCase();
-      // 별명 포함한 아티스트 검색 결과 가져오기
       final matchedArtists = _repository.getArtistNamesMatching(_searchQuery);
 
-      _filteredSongs = _allSongs.where((songRef) {
+      filtered = _allSongs.where((songRef) {
         final track = songRef.track;
         final album = songRef.album;
-
-        // 위시리스트 필터링: _includeWishlist가 false이면 위시리스트 앨범의 곡은 제외
-        if (!_includeWishlist && album.isWishlist) {
-          return false;
-        }
-
         final artistName = album.artist;
 
-        // 1. 트랙 제목 검색
         final titleMatch = track.title.toLowerCase().contains(lowerQuery);
-        // 2. 트랙 한글 제목 검색
         final titleKrMatch =
             track.titleKr?.toLowerCase().contains(lowerQuery) ?? false;
-        // 3. 아티스트 이름 직접 검색
         final artistMatch = artistName.toLowerCase().contains(lowerQuery);
-        // 4. 아티스트 별명 매칭 (Repository 결과 활용)
         final aliasMatch = matchedArtists.contains(artistName);
 
         return titleMatch || titleKrMatch || artistMatch || aliasMatch;
       }).toList();
     }
-    _filteredSongs.sort((a, b) {
-      final artistCompare = a.album.artist.toLowerCase().compareTo(
-        b.album.artist.toLowerCase(),
-      );
+
+    // 위시리스트 필터링 (그룹화 전)
+    if (!_includeWishlist) {
+      filtered = filtered.where((s) => !s.album.isWishlist).toList();
+    }
+
+    _filteredGroups = _groupSongs(filtered);
+    _filteredGroups.sort((a, b) {
+      final artistCompare =
+          a.artistName.toLowerCase().compareTo(b.artistName.toLowerCase());
       if (artistCompare != 0) return artistCompare;
-      return a.track.title.toLowerCase().compareTo(b.track.title.toLowerCase());
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
   }
 
-  List<Album> _findOtherAlbumsForTrack(_SongWithAlbumRef currentSong) {
-    final trackTitle = currentSong.track.title.toLowerCase();
-    final artistName = currentSong.album.artist.toLowerCase();
-    final currentAlbumId = currentSong.album.id;
-
-    final otherSongs = _allSongs.where((songRef) {
-      return songRef.track.title.toLowerCase() == trackTitle &&
-          songRef.album.artist.toLowerCase() == artistName &&
-          songRef.album.id != currentAlbumId;
-    }).toList();
-
-    final otherAlbums = <Album>[];
-    final albumIds = <String>{};
-    for (final songRef in otherSongs) {
-      if (albumIds.add(songRef.album.id)) {
-        otherAlbums.add(songRef.album);
-      }
+  // 동일 곡(제목+아티스트) 그룹화
+  List<_SongGroup> _groupSongs(List<_SongWithAlbumRef> songs) {
+    final groupMap = <String, List<_SongWithAlbumRef>>{};
+    for (final song in songs) {
+      final key =
+          '${song.track.title.toLowerCase()}||${song.album.artist.toLowerCase()}';
+      groupMap.putIfAbsent(key, () => []).add(song);
     }
-    return otherAlbums;
+    return groupMap.entries.map((entry) {
+      final first = entry.value.first;
+      return _SongGroup(
+        title: first.track.title,
+        artistName: first.album.artist,
+        titleKr: first.track.titleKr,
+        entries: entry.value,
+      );
+    }).toList();
+  }
+  // endregion
+
+  // region 곡 액션
+  void _showSongActions(_SongWithAlbumRef songRef) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (BuildContext context) => CupertinoActionSheet(
+        title: Text(songRef.track.title),
+        message: Text(songRef.album.artist),
+        actions: <CupertinoActionSheetAction>[
+          CupertinoActionSheetAction(
+            child: const Text('다른 앨범에서 보기'),
+            onPressed: () {
+              Navigator.pop(context);
+              _findAndShowOtherAlbums(songRef);
+            },
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text('취소'),
+        ),
+      ),
+    );
   }
 
   void _findAndShowOtherAlbums(_SongWithAlbumRef songRef) {
@@ -193,7 +248,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                   (album) => CupertinoDialogAction(
                     child: Text(album.title),
                     onPressed: () {
-                      Navigator.pop(context); // 대화 상자 닫기
+                      Navigator.pop(context);
                       Navigator.push(
                         context,
                         CupertinoPageRoute(
@@ -217,26 +272,78 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     );
   }
 
-  void _showSongActions(_SongWithAlbumRef songRef) {
+  List<Album> _findOtherAlbumsForTrack(_SongWithAlbumRef currentSong) {
+    final trackTitle = currentSong.track.title.toLowerCase();
+    final artistName = currentSong.album.artist.toLowerCase();
+    final currentAlbumId = currentSong.album.id;
+
+    final otherSongs = _allSongs.where((songRef) {
+      return songRef.track.title.toLowerCase() == trackTitle &&
+          songRef.album.artist.toLowerCase() == artistName &&
+          songRef.album.id != currentAlbumId;
+    }).toList();
+
+    final otherAlbums = <Album>[];
+    final albumIds = <String>{};
+    for (final songRef in otherSongs) {
+      if (albumIds.add(songRef.album.id)) {
+        otherAlbums.add(songRef.album);
+      }
+    }
+    return otherAlbums;
+  }
+
+  // 그룹화된 곡 탭 시 앨범 선택 시트
+  void _showAlbumSelectionSheet(_SongGroup group) {
+    HapticService.lightTap();
     showCupertinoModalPopup(
       context: context,
-      builder: (BuildContext context) => CupertinoActionSheet(
-        title: Text(songRef.track.title),
-        message: Text(songRef.album.artist),
-        actions: <CupertinoActionSheetAction>[
-          CupertinoActionSheetAction(
-            child: const Text('다른 앨범에서 보기'),
-            onPressed: () {
-              Navigator.pop(context);
-              _findAndShowOtherAlbums(songRef);
-            },
-          ),
-        ],
+      builder: (context) => CupertinoActionSheet(
+        title: Text(group.title),
+        message: Text('${group.artistName} \u00b7 ${group.albumCount}개 앨범에 수록'),
+        actions: group.entries
+            .map(
+              (entry) => CupertinoActionSheetAction(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  final result = await Navigator.push(
+                    context,
+                    CupertinoPageRoute(
+                      builder: (_) => DetailScreen(album: entry.album),
+                    ),
+                  );
+                  if (result == true && mounted) await _loadAllSongs();
+                },
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: _buildAlbumCover(entry.album, 30),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        entry.album.title,
+                        style: TextStyle(
+                          color: CupertinoColors.label.resolveFrom(context),
+                          fontSize: 16,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .toList(),
         cancelButton: CupertinoActionSheetAction(
           isDefaultAction: true,
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context),
           child: const Text('취소'),
         ),
       ),
@@ -250,8 +357,8 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(
         middle: Text('모든 곡'),
-        backgroundColor: CupertinoColors.systemBackground, // 스크롤 시 색상 변경 방지
-        border: null, // 경계선 제거 (깔끔한 UI)
+        backgroundColor: CupertinoColors.systemBackground,
+        border: null,
       ),
       child: SafeArea(
         child: Column(
@@ -279,8 +386,9 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                   const SizedBox(width: 8),
                   CupertinoSwitch(
                     value: _includeWishlist,
-                    activeColor: CupertinoColors.systemPink,
+                    activeTrackColor: CupertinoColors.systemPink,
                     onChanged: (value) {
+                      HapticService.toggle();
                       setState(() {
                         _includeWishlist = value;
                         _filterSongs();
@@ -308,7 +416,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       );
     }
 
-    if (_filteredSongs.isEmpty) {
+    if (_filteredGroups.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: Center(
@@ -336,7 +444,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
                   fontFamily: '.SF Pro Text',
-                  decoration: TextDecoration.none, // 노란색 밑줄 수정
+                  decoration: TextDecoration.none,
                 ),
               ),
               const SizedBox(height: 8),
@@ -345,7 +453,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                 style: TextStyle(
                   color: CupertinoColors.secondaryLabel.resolveFrom(context),
                   fontSize: 15,
-                  decoration: TextDecoration.none, // 노란색 밑줄 수정
+                  decoration: TextDecoration.none,
                 ),
               ),
             ],
@@ -358,30 +466,70 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       top: false,
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate((context, index) {
-          final songRef = _filteredSongs[index];
-          return _SongListItem(
-            songRef: songRef,
-            onTap: () async {
-              final result = await Navigator.push(
-                context,
-                CupertinoPageRoute(
-                  builder: (context) => DetailScreen(album: songRef.album),
-                ),
-              );
-              if (result == true && mounted) {
-                await _loadAllSongs();
-              }
-            },
-            onMoreTap: () => _showSongActions(songRef),
+          final group = _filteredGroups[index];
+
+          if (group.isSingle) {
+            // 단일 앨범 곡: 기존 동작 (바로 DetailScreen 이동)
+            final songRef = group.entries.first;
+            return _SongListItem(
+              songRef: songRef,
+              onTap: () async {
+                HapticService.lightTap();
+                final result = await Navigator.push(
+                  context,
+                  CupertinoPageRoute(
+                    builder: (context) => DetailScreen(album: songRef.album),
+                  ),
+                );
+                if (result == true && mounted) {
+                  await _loadAllSongs();
+                }
+              },
+              onMoreTap: () {
+                HapticService.lightTap();
+                _showSongActions(songRef);
+              },
+            );
+          }
+
+          // 복수 앨범 곡: 그룹화된 항목
+          return _GroupedSongListItem(
+            group: group,
+            onTap: () => _showAlbumSelectionSheet(group),
           );
-        }, childCount: _filteredSongs.length),
+        }, childCount: _filteredGroups.length),
       ),
     );
   }
+  // endregion
+}
+
+// endregion
+
+// region 앨범 커버 빌더 (공용)
+Widget _buildAlbumCover(Album album, double size) {
+  final imagePath = album.imagePath;
+  if (imagePath != null &&
+      imagePath.isNotEmpty &&
+      File(imagePath).existsSync()) {
+    return Image.file(File(imagePath), fit: BoxFit.cover);
+  }
+  return Container(
+    width: size,
+    height: size,
+    color: CupertinoColors.systemGrey5,
+    child: Icon(
+      CupertinoIcons.music_note,
+      color: CupertinoColors.systemGrey,
+      size: size * 0.48,
+    ),
+  );
 }
 // endregion
 
 // region 내부 위젯
+
+// 단일 앨범 곡 항목
 class _SongListItem extends StatelessWidget {
   final _SongWithAlbumRef songRef;
   final VoidCallback onTap;
@@ -510,6 +658,147 @@ class _SongListItem extends StatelessWidget {
   }
 }
 
+// 복수 앨범 곡 그룹 항목
+class _GroupedSongListItem extends StatelessWidget {
+  final _SongGroup group;
+  final VoidCallback onTap;
+
+  const _GroupedSongListItem({
+    required this.group,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      onPressed: onTap,
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(
+              children: [
+                _buildStackedCovers(context),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        group.title,
+                        style: TextStyle(
+                          color: group.isAllWishlist
+                              ? CupertinoColors.label
+                                    .resolveFrom(context)
+                                    .withValues(alpha: 0.6)
+                              : CupertinoColors.label.resolveFrom(context),
+                          fontSize: 17,
+                          fontWeight: group.isAllWishlist
+                              ? FontWeight.normal
+                              : FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${group.artistName} \u00b7 ${group.albumCount}개 앨범 수록',
+                        style: TextStyle(
+                          color: CupertinoColors.secondaryLabel
+                              .resolveFrom(context),
+                          fontSize: 15,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // 앨범 수 배지
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.systemGrey5.resolveFrom(context),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${group.albumCount}',
+                    style: TextStyle(
+                      color: CupertinoColors.secondaryLabel
+                          .resolveFrom(context),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 82.0, right: 16.0),
+            child: Container(
+              height: 1.0 / MediaQuery.devicePixelRatioOf(context),
+              color: CupertinoColors.separator.resolveFrom(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 앨범 커버 최대 3장 겹쳐서 표시
+  Widget _buildStackedCovers(BuildContext context) {
+    final albums = group.entries.map((e) => e.album).toList();
+    final displayCount = albums.length.clamp(1, 3);
+    const double itemSize = 40;
+    const double offset = 5.0;
+
+    return SizedBox(
+      width: 50,
+      height: 50,
+      child: Stack(
+        children: List.generate(displayCount, (i) {
+          // 뒤에서부터 쌓기 (첫 앨범이 맨 위)
+          final reverseIndex = displayCount - 1 - i;
+          final album = albums[reverseIndex];
+          return Positioned(
+            left: reverseIndex * offset,
+            top: reverseIndex * offset,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: CupertinoColors.systemBackground.resolveFrom(context),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: CupertinoColors.black.withValues(alpha: 0.08),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(5),
+                child: SizedBox(
+                  width: itemSize,
+                  height: itemSize,
+                  child: _buildAlbumCover(album, itemSize),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// 로딩 스켈레톤
 class _SongListItemSkeleton extends StatelessWidget {
   const _SongListItemSkeleton();
 
@@ -566,3 +855,5 @@ class _SongListItemSkeleton extends StatelessWidget {
     );
   }
 }
+
+// endregion

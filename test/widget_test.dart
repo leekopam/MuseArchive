@@ -1,30 +1,39 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:my_album_app/main.dart';
+import 'package:my_album_app/models/value_objects/release_date.dart';
+import 'package:my_album_app/widgets/common_widgets.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('ReleaseDate.parse normalizes common inputs', () {
+    expect(ReleaseDate.parse('2024.03.15').format(), '2024.03.15');
+    expect(ReleaseDate.parse('202403').format(), '2024.03.01');
+    expect(ReleaseDate.parse('').isValid, isFalse);
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('EmptyState renders the configured action', (
+    WidgetTester tester,
+  ) async {
+    var tapped = false;
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EmptyState(
+          icon: Icons.library_music_outlined,
+          message: 'No albums yet',
+          actionLabel: 'Add album',
+          onAction: () {
+            tapped = true;
+          },
+        ),
+      ),
+    );
+
+    expect(find.text('No albums yet'), findsOneWidget);
+    expect(find.text('Add album'), findsOneWidget);
+
+    await tester.tap(find.text('Add album'));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(tapped, isTrue);
   });
 }

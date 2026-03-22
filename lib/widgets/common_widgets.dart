@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/haptic_service.dart';
 
 // region 텍스트 입력 위젯
 class ModernTextField extends StatelessWidget {
@@ -121,11 +122,16 @@ class LoadingOverlay extends StatelessWidget {
     return Stack(
       children: [
         child,
-        if (isLoading)
-          Container(
-            color: Colors.black54,
-            child: const Center(child: CircularProgressIndicator()),
-          ),
+        AnimatedOpacity(
+          opacity: isLoading ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 200),
+          child: isLoading
+              ? Container(
+                  color: Colors.black54,
+                  child: const Center(child: CircularProgressIndicator()),
+                )
+              : const SizedBox.shrink(),
+        ),
       ],
     );
   }
@@ -178,6 +184,7 @@ class EmptyState extends StatelessWidget {
 // region 스낵바 헬퍼
 class ErrorSnackBar {
   static void show(BuildContext context, String message) {
+    HapticService.error();
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -192,6 +199,7 @@ class ErrorSnackBar {
 
 class SuccessSnackBar {
   static void show(BuildContext context, String message) {
+    HapticService.success();
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -230,6 +238,7 @@ class ConfirmDialog {
     String confirmText = '확인',
     String cancelText = '취소',
   }) async {
+    HapticService.warning();
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
