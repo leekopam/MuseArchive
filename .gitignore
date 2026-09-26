@@ -44,6 +44,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Gradle build outputs (reports, intermediates) — 생성물은 추적하지 않는다
+**/android/**/build/
+
 # Local scratch and investigation artifacts
 /temp_*.dart
 /temp_*.json
