@@ -125,7 +125,6 @@ class FakeAlbumRepository implements IAlbumRepository {
   Future<bool> importBackup() async => false;
 }
 
-
 /// path_provider 대체. 필요한 경로만 주입하면 된다.
 class FakePathProviderPlatform extends PathProviderPlatform {
   FakePathProviderPlatform({
