@@ -1,13 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
+
 import 'package:my_album_app/models/album.dart';
 import 'package:my_album_app/models/artist.dart';
+import 'package:my_album_app/models/track.dart';
 import 'package:my_album_app/screens/add_screen.dart';
 import 'package:my_album_app/services/discogs_service.dart';
 import 'package:my_album_app/services/i_album_repository.dart';
@@ -15,6 +20,8 @@ import 'package:my_album_app/services/musicbrainz_service.dart';
 import 'package:my_album_app/services/spotify_service.dart';
 import 'package:my_album_app/services/vocadb_service.dart';
 import 'package:my_album_app/viewmodels/album_form_viewmodel.dart';
+
+import 'fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -1576,6 +1583,268 @@ void main() {
         expect(viewModel.lastMusicBrainzAlbumId, 'mbid-123');
         expect(repository.updateCalls, 1);
         expect(repository.lastUpdatedAlbum?.title, 'Metallica');
+      },
+    );
+
+    testWidgets(
+      'merges loaded Discogs fields and keeps the existing description when empty',
+      (WidgetTester tester) async {
+        // S04: 실제 서비스 경계(DiscogsService.forTesting)를 스텁해
+        // 검색→로드→병합→자동 저장까지의 필드 매핑과 보존 규칙을 검증한다
+        final repository = _FakeAlbumRepository();
+        final existingAlbum = Album(
+          id: 'album-discogs-merge',
+          title: 'Typed Title',
+          artists: const <String>['Typed Artist'],
+          description: '직접 메모한 설명',
+        );
+        final discogs = DiscogsService.forTesting(
+          tokenProvider: () async => 'test-token',
+          get: (uri, {headers}) async {
+            if (uri.path.endsWith('/releases/777')) {
+              return http.Response(
+                jsonEncode(<String, dynamic>{
+                  'title': 'Official Title',
+                  'artists': <Map<String, String>>[
+                    <String, String>{'name': 'Official Artist'},
+                  ],
+                  'tracklist': <Map<String, String>>[
+                    <String, String>{'title': 'Song A', 'type_': 'track'},
+                    <String, String>{'title': 'Disc 2', 'type_': 'heading'},
+                    <String, String>{'title': 'Song B', 'type_': 'track'},
+                  ],
+                  'released': '2024-03-05',
+                  'formats': <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'name': 'CD',
+                      'descriptions': <String>['Album'],
+                    },
+                  ],
+                  'labels': <Map<String, String>>[
+                    <String, String>{
+                      'name': 'Official Label',
+                      'catno': 'ABC-1234',
+                    },
+                  ],
+                  'genres': <String>['Rock'],
+                  'styles': <String>['Alternative Rock'],
+                  'notes': '',
+                }),
+                200,
+              );
+            }
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'results': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'id': 777,
+                    'title': 'Official Title',
+                    'artist': 'Official Artist',
+                    'year': 2024,
+                    'thumb': '',
+                    'format': <String>['CD'],
+                  },
+                ],
+              }),
+              200,
+            );
+          },
+        );
+        final viewModel = AlbumFormViewModel(
+          repository,
+          discogs,
+          SpotifyService(),
+          VocadbService(),
+          MusicBrainzService(),
+        );
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Discogs에서 검색'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.text('Official Title').last);
+        await tester.tap(find.text('Official Title').last);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+
+        final saved = repository.lastUpdatedAlbum;
+        expect(repository.updateCalls, 1);
+        expect(saved?.id, 'album-discogs-merge');
+        expect(saved?.title, 'Official Title');
+        expect(saved?.artists, const <String>['Official Artist']);
+        expect(saved?.releaseDate.date?.year, 2024);
+        expect(saved?.releaseDate.date?.month, 3);
+        expect(saved?.releaseDate.date?.day, 5);
+        expect(saved?.genres, const <String>['Rock']);
+        expect(saved?.styles, const <String>['Alternative Rock']);
+        // 포맷 필드는 쉼표 구분 입력이라 'CD, Album'이 2개 항목으로 재분할되어 저장된다
+        expect(saved?.formats, const <String>['CD', 'Album']);
+        expect(saved?.labels, const <String>['Official Label - ABC-1234']);
+        expect(
+          saved?.tracks.map(
+            (track) => (title: track.title, isHeader: track.isHeader),
+          ),
+          <({String title, bool isHeader})>[
+            (title: 'Song A', isHeader: false),
+            (title: 'Disc 2', isHeader: true),
+            (title: 'Song B', isHeader: false),
+          ],
+        );
+        // 외부 결과의 설명이 비어 있으면 기존 설명을 유지한다
+        expect(saved?.description, '직접 메모한 설명');
+      },
+    );
+
+    testWidgets(
+      'persists the real image_picker platform result path for an existing album',
+      (WidgetTester tester) async {
+        // S05: 스텁이 아닌 실제 AlbumFormViewModel.pickImage()가
+        // image_picker 플랫폼 경계에서 받은 경로를 그대로 저장한다
+        final repository = _FakeAlbumRepository();
+        final existingAlbum = Album(
+          id: 'album-image-path',
+          title: 'Sandbox',
+          artists: const <String>['DECO*27'],
+        );
+        final viewModel = AlbumFormViewModel(
+          repository,
+          DiscogsService(),
+          SpotifyService(),
+          VocadbService(),
+          MusicBrainzService(),
+        );
+        final originalPicker = ImagePickerPlatform.instance;
+        ImagePickerPlatform.instance = FakeImagePickerPlatform(
+          result: XFile(r'C:\gallery\picked_real.png'),
+        );
+        addTearDown(() {
+          ImagePickerPlatform.instance = originalPicker;
+        });
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('사진 보관함에서 선택'));
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+
+        expect(repository.updateCalls, 1);
+        expect(
+          repository.lastUpdatedAlbum?.imagePath,
+          r'C:\gallery\picked_real.png',
+        );
+      },
+    );
+
+    testWidgets(
+      'track add, disc header, title edit and remove persist to the album',
+      (WidgetTester tester) async {
+        // S06: 트랙 편집 UI — 추가/헤더/제목 수정/삭제가 자동 저장된 앨범에 반영된다
+        final repository = _FakeAlbumRepository();
+        final existingAlbum = Album(
+          id: 'album-tracks',
+          title: 'Tracklist Edit',
+          artists: const <String>['Editor'],
+          tracks: <Track>[Track(title: 'Intro')],
+        );
+        final viewModel = _FakeAlbumFormViewModel(repository: repository);
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 트랙 섹션은 lazy sliver 안에 있어 스크롤로 빌드를 유도한다
+        await tester.scrollUntilVisible(
+          find.text('트랙 추가'),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.text('트랙 추가'));
+        await tester.pumpAndSettle();
+
+        expect(viewModel.currentAlbum?.tracks.length, 2);
+
+        final secondTrackField = find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == '트랙 2',
+        );
+        await tester.scrollUntilVisible(
+          secondTrackField,
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.enterText(secondTrackField, 'Second Song');
+        await tester.pumpAndSettle();
+
+        await tester.scrollUntilVisible(
+          find.text('디스크 추가'),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.text('디스크 추가'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Disc 1'), findsWidgets);
+
+        // 'Intro' 트랙 카드의 삭제 버튼을 눌러 제거한다
+        final firstTrackField = find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == '트랙 1',
+        );
+        await tester.scrollUntilVisible(
+          firstTrackField,
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        final deleteButton = find.descendant(
+          of: find.ancestor(
+            of: firstTrackField,
+            matching: find.byType(Card),
+          ),
+          matching: find.byIcon(Icons.remove_circle_outline),
+        );
+        await tester.tap(deleteButton);
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+
+        final saved = repository.lastUpdatedAlbum;
+        expect(
+          saved?.tracks.map(
+            (track) => (title: track.title, isHeader: track.isHeader),
+          ),
+          <({String title, bool isHeader})>[
+            (title: 'Second Song', isHeader: false),
+            (title: 'Disc 1', isHeader: true),
+          ],
+        );
       },
     );
   });
