@@ -1847,6 +1847,76 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'disc header title and Korean title edits persist to the album',
+      (WidgetTester tester) async {
+        // S06: 디스크 제목·한국어 제목 편집이 자동 저장된 앨범에 반영된다
+        final repository = _FakeAlbumRepository();
+        final existingAlbum = Album(
+          id: 'album-tracks-2',
+          title: 'Tracklist Edit 2',
+          artists: const <String>['Editor'],
+          tracks: <Track>[
+            Track(title: 'Disc 1', isHeader: true),
+            Track(title: 'Song A'),
+          ],
+        );
+        final viewModel = _FakeAlbumFormViewModel(repository: repository);
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final headerField = find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == '디스크 제목',
+        );
+        await tester.scrollUntilVisible(
+          headerField,
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.enterText(headerField, 'Disc 2');
+        await tester.pumpAndSettle();
+
+        final krField = find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == '트랙 1 (한국어)',
+        );
+        await tester.scrollUntilVisible(
+          krField,
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.enterText(krField, '노래 에이');
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+
+        final saved = repository.lastUpdatedAlbum;
+        expect(
+          saved?.tracks.map(
+            (track) => (
+              title: track.title,
+              titleKr: track.titleKr,
+              isHeader: track.isHeader,
+            ),
+          ),
+          <({String title, String? titleKr, bool isHeader})>[
+            (title: 'Disc 2', titleKr: null, isHeader: true),
+            (title: 'Song A', titleKr: '노래 에이', isHeader: false),
+          ],
+        );
+      },
+    );
   });
 }
 
