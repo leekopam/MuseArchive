@@ -52,8 +52,12 @@ class AlbumRepository implements IAlbumRepository {
   Box get box => Hive.box(_boxName);
   Box get artistBox => Hive.box(_artistBoxName);
 
+  // box.listenable()은 호출마다 새 인스턴스와 스트림 구독을 만든다.
+  // add/removeListener가 같은 대상에 적용되도록 인스턴스를 유지한다.
+  late final ValueListenable _boxListenable = box.listenable();
+
   @override
-  ValueListenable get listenable => box.listenable();
+  ValueListenable get listenable => _boxListenable;
 
   @visibleForTesting
   void resetPlatformHooks() {
