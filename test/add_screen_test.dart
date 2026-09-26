@@ -231,6 +231,38 @@ void main() {
       },
     );
 
+    testWidgets(
+      'back navigation keeps the form when artists are separator-only',
+      (WidgetTester tester) async {
+        final repository = _FakeAlbumRepository();
+
+        await tester.pumpWidget(
+          _buildAddScreenLauncherApp(
+            repository: repository,
+            child: const AddScreen(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Open AddScreen'));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextFormField).at(0), 'Keep Me');
+        await tester.enterText(find.byType(TextFormField).at(2), ' , , ');
+
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        // 저장 없이 종료하지 않고 폼에 머물러 입력 보존·수정을 유도한다
+        expect(repository.addCalls, 0);
+        expect(repository.updateCalls, 0);
+        expect(find.text('앨범 추가'), findsOneWidget);
+        expect(find.text('Keep Me'), findsOneWidget);
+        expect(find.text('Open AddScreen'), findsNothing);
+        expect(find.text('아티스트 이름을 입력해주세요.'), findsOneWidget);
+      },
+    );
+
     testWidgets('searches and autosaves when barcode scan returns a value', (
       WidgetTester tester,
     ) async {

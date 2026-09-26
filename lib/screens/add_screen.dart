@@ -101,8 +101,9 @@ class _AddScreenState extends State<AddScreen> {
     }
 
     if (_controllers.parsedArtists.isEmpty) {
+      // 구분자만 입력된 경우 저장도 종료도 하지 않고 폼에 머물러 수정을 유도한다
       ErrorSnackBar.show(context, '아티스트 이름을 입력해주세요.');
-      return true;
+      return false;
     }
 
     _controllers.commitChanges(_viewModel);
