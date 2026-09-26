@@ -203,9 +203,8 @@ void main() {
 
       final album = await service.fetchAlbumById(77);
 
-      expect(album, isNotNull);
-      expect(album?.title, 'No Cover Album');
-      expect(album?.imagePath, isNull);
+      expect(album.title, 'No Cover Album');
+      expect(album.imagePath, isNull);
       expect(imageRequested, isFalse);
     });
   });

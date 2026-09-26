@@ -289,6 +289,44 @@ void main() {
       expect(repository.updateCalls, 0);
     });
 
+    testWidgets('does not autosave when barcode lookup fails', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = 'Discogs 요청에 실패했습니다. 상태 코드: 429';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-barcode-error',
+        title: 'Sand Planet',
+        artists: const <String>['hachi'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        barcodeSearchError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(
+            albumToEdit: existingAlbum,
+            barcodeScan: () async => '8801234567890',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.qr_code_scanner));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.barcodeSearchCalls, 1);
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(repository.addCalls, 0);
+      expect(repository.updateCalls, 0);
+    });
+
     testWidgets('shows guidance when Spotify link search is not configured', (
       WidgetTester tester,
     ) async {
@@ -653,6 +691,58 @@ void main() {
       expect(find.text('검색 결과가 없습니다.'), findsNothing);
     });
 
+    testWidgets('does not autosave when the selected Discogs load fails', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = 'Discogs 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-discogs-load-error',
+        title: 'Sand Planet',
+        artists: const <String>['hachi'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        discogsSearchResults: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 88,
+            'title': 'Failed Load Album',
+            'artist': 'hachi',
+            'year': '2017',
+            'format': 'CD',
+            'thumb': '',
+          },
+        ],
+        discogsLoadError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Discogs에서 검색'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      final failedResultTitle = find.text('Failed Load Album').last;
+      await tester.ensureVisible(failedResultTitle);
+      await tester.tap(failedResultTitle);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.loadAlbumByIdCalls, 1);
+      expect(viewModel.lastLoadedReleaseId, 88);
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(repository.updateCalls, 0);
+    });
+
     testWidgets('applies a Discogs image search result and autosaves it', (
       WidgetTester tester,
     ) async {
@@ -713,6 +803,101 @@ void main() {
         repository.lastUpdatedAlbum?.imagePath,
         r'C:\tmp\discogs_cover.png',
       );
+    });
+
+    testWidgets('shows Discogs image search errors instead of empty result guidance', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = 'Discogs API 토큰이 설정되지 않았습니다. 설정에서 토큰을 입력해주세요.';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-discogs-image-error',
+        title: 'Sand Planet',
+        artists: const <String>['hachi'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        discogsSearchError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discogs에서 검색').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.discogsSearchCalls, 1);
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(find.text('검색 결과가 없습니다.'), findsNothing);
+      expect(find.text('이미지 선택'), findsNothing);
+      expect(repository.updateCalls, 0);
+    });
+
+    testWidgets('does not autosave when the Discogs cover download fails', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = '이미지를 저장할 수 없습니다.';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-discogs-cover-error',
+        title: 'Sand Planet',
+        artists: const <String>['hachi'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        discogsSearchResults: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 77,
+            'title': 'Sand Planet',
+            'artist': 'hachi',
+            'year': '2017',
+            'format': 'CD',
+            'thumb': 'https://example.com/discogs-cover.jpg',
+          },
+        ],
+        coverUpdateError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discogs에서 검색').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pump();
+
+      expect(find.text('이미지 선택'), findsOneWidget);
+
+      final imageChoice = find.descendant(
+        of: find.byType(GridView),
+        matching: find.byType(InkWell),
+      );
+      await tester.tap(imageChoice.first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.updateCoverFromUrlCalls, 1);
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(repository.updateCalls, 0);
     });
 
     testWidgets('builds a trimmed VocaDB query from the dialog fields', (
@@ -1532,7 +1717,9 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
     this.discogsSearchResults = const <Map<String, dynamic>>[],
     this.discogsSearchError,
     this.loadedAlbumResult,
+    this.discogsLoadError,
     this.discogsCoverResultPath,
+    this.coverUpdateError,
     this.vocadbSearchResults = const <Map<String, dynamic>>[],
     this.vocadbSearchError,
     this.loadedVocadbAlbumResult,
@@ -1545,6 +1732,7 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
     this.musicBrainzLoadError,
     this.musicBrainzLoadFuture,
     this.barcodeAlbumResult,
+    this.barcodeSearchError,
   }) : super(
          repository,
          DiscogsService(),
@@ -1561,7 +1749,9 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   final List<Map<String, dynamic>> discogsSearchResults;
   final String? discogsSearchError;
   final Album? loadedAlbumResult;
+  final String? discogsLoadError;
   final String? discogsCoverResultPath;
+  final String? coverUpdateError;
   final List<Map<String, dynamic>> vocadbSearchResults;
   final String? vocadbSearchError;
   final Album? loadedVocadbAlbumResult;
@@ -1574,6 +1764,7 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   final String? musicBrainzLoadError;
   final Future<void>? musicBrainzLoadFuture;
   final Album? barcodeAlbumResult;
+  final String? barcodeSearchError;
 
   int spotifySearchCalls = 0;
   String? lastSpotifyQuery;
@@ -1660,6 +1851,12 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   Future<void> loadAlbumById(int releaseId) async {
     loadAlbumByIdCalls += 1;
     lastLoadedReleaseId = releaseId;
+    final error = discogsLoadError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      notifyListeners();
+      return;
+    }
     final albumToApply =
         loadedAlbumResult ??
         currentAlbum?.copyWith(
@@ -1675,6 +1872,13 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   Future<void> updateCoverFromUrl(String imageUrl) async {
     updateCoverFromUrlCalls += 1;
     lastCoverUrl = imageUrl;
+
+    final error = coverUpdateError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      notifyListeners();
+      return;
+    }
 
     if (currentAlbum == null) {
       return;
@@ -1769,6 +1973,12 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   Future<void> searchByBarcode(String barcode) async {
     barcodeSearchCalls += 1;
     lastBarcodeQuery = barcode;
+    final error = barcodeSearchError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      notifyListeners();
+      return;
+    }
     if (barcodeAlbumResult != null) {
       updateCurrentAlbum(barcodeAlbumResult!);
     }

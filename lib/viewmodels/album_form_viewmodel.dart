@@ -127,6 +127,7 @@ class AlbumFormViewModel extends ChangeNotifier {
     String? linkUrl,
   }) async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
     try {
       final fileName = 'cover_${DateTime.now().millisecondsSinceEpoch}';
@@ -250,30 +251,26 @@ class AlbumFormViewModel extends ChangeNotifier {
 
     try {
       final album = await _discogsService.fetchAlbumById(releaseId);
-      if (album != null) {
-        _currentAlbum =
-            _currentAlbum?.copyWith(
-              title: album.title,
-              artists: album.artists,
-              catalogNumber: album.catalogNumber,
-              releaseDate: album.releaseDate,
-              imagePath: album.imagePath,
-              tracks: album.tracks,
-              genres: album.genres,
-              styles: album.styles,
-              formats: album.formats,
-              labels: album.labels,
-              description:
-                  (album.description.isEmpty &&
-                      _currentAlbum?.description.isNotEmpty == true)
-                  ? _currentAlbum!.description
-                  : album.description,
-            ) ??
-            album;
-        _hasUnsavedChanges = true;
-      } else {
-        _errorMessage = '앨범 정보를 불러올 수 없습니다.';
-      }
+      _currentAlbum =
+          _currentAlbum?.copyWith(
+            title: album.title,
+            artists: album.artists,
+            catalogNumber: album.catalogNumber,
+            releaseDate: album.releaseDate,
+            imagePath: album.imagePath,
+            tracks: album.tracks,
+            genres: album.genres,
+            styles: album.styles,
+            formats: album.formats,
+            labels: album.labels,
+            description:
+                (album.description.isEmpty &&
+                    _currentAlbum?.description.isNotEmpty == true)
+                ? _currentAlbum!.description
+                : album.description,
+          ) ??
+          album;
+      _hasUnsavedChanges = true;
     } catch (e) {
       _errorMessage = _discogsErrorMessage(e, '앨범 로드 중 오류가 발생했습니다');
     } finally {

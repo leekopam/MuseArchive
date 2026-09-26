@@ -24,7 +24,7 @@ function Resolve-FlutterPath {
     }
 
     $flutterCommand = Get-Command flutter -ErrorAction SilentlyContinue
-    if ($flutterCommand) {
+    if ($flutterCommand -and -not [string]::IsNullOrWhiteSpace($flutterCommand.Source)) {
         return $flutterCommand.Source
     }
 

@@ -514,6 +514,15 @@ class _AddScreenState extends State<AddScreen> {
           );
     if (result != null && mounted) {
       await viewModel.searchByBarcode(result);
+      if (!mounted) {
+        return;
+      }
+      final errorMessage = viewModel.errorMessage;
+      if (errorMessage != null) {
+        ErrorSnackBar.show(this.context, errorMessage);
+        viewModel.clearError();
+        return;
+      }
       _onFieldChanged();
     }
   }
@@ -625,7 +634,7 @@ class _AddScreenState extends State<AddScreen> {
             height: MediaQuery.of(context).size.height * 0.7,
             child: ListView.builder(
               itemCount: results.length,
-              itemBuilder: (context, index) {
+              itemBuilder: (_, index) {
                 final result = results[index];
                 final imageUrl = result['thumb'] as String?;
                 final title = result['title'] ?? '제목 없음';
@@ -640,6 +649,15 @@ class _AddScreenState extends State<AddScreen> {
                     if (releaseId != null) {
                       Navigator.pop(dialogContext);
                       await viewModel.loadAlbumById(releaseId);
+                      if (!mounted) {
+                        return;
+                      }
+                      final errorMessage = viewModel.errorMessage;
+                      if (errorMessage != null) {
+                        ErrorSnackBar.show(context, errorMessage);
+                        viewModel.clearError();
+                        return;
+                      }
                       _onFieldChanged();
                     }
                   },
@@ -1398,7 +1416,13 @@ class _AddScreenState extends State<AddScreen> {
       if (query != null && query.isNotEmpty && mounted) {
         final results = await viewModel.searchByTitleArtist(title: query);
         if (mounted) {
-          _showDiscogsImageResults(viewModel, results);
+          final errorMessage = viewModel.errorMessage;
+          if (errorMessage != null) {
+            ErrorSnackBar.show(context, errorMessage);
+            viewModel.clearError();
+          } else {
+            _showDiscogsImageResults(viewModel, results);
+          }
         }
       }
     } finally {
@@ -1421,7 +1445,7 @@ class _AddScreenState extends State<AddScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('이미지 선택'),
         content: SizedBox(
           width: double.maxFinite,
@@ -1433,17 +1457,26 @@ class _AddScreenState extends State<AddScreen> {
               mainAxisSpacing: 8,
             ),
             itemCount: results.length,
-            itemBuilder: (context, index) {
+            itemBuilder: (_, index) {
               final item = results[index];
               final thumb = item['thumb'] as String?;
               return InkWell(
                 onTap: () async {
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                   // 썸네일 사용 (고해상도 이미지는 상세 조회 필요)
                   // ID로 상세 정보를 로드하면 다른 입력 정보가 덮어씌워질 수 있으므로 현재는 썸네일 사용
                   if (item['id'] != null) {
                     if (thumb != null) {
                       await viewModel.updateCoverFromUrl(thumb);
+                      if (!mounted) {
+                        return;
+                      }
+                      final errorMessage = viewModel.errorMessage;
+                      if (errorMessage != null) {
+                        ErrorSnackBar.show(context, errorMessage);
+                        viewModel.clearError();
+                        return;
+                      }
                       _onFieldChanged();
                     }
                   }

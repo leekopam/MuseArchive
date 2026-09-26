@@ -107,8 +107,8 @@ class DiscogsService {
 
   Future<bool> testConnection() async {
     try {
-      final response = await _authenticatedGet('/oauth/identity');
-      return response.statusCode == 200;
+      await _authenticatedGet('/oauth/identity');
+      return true;
     } catch (e) {
       debugPrint("Discogs 연결 테스트 실패: $e");
       return false;
@@ -184,21 +184,19 @@ class DiscogsService {
         final releaseId = results[0]['id'];
         final rawData = await _fetchRawAlbumDetails(releaseId);
 
-        if (rawData != null) {
-          String? localImagePath;
-          if (rawData['images'] != null &&
-              (rawData['images'] as List).isNotEmpty) {
-            final imageUrl = rawData['images'][0]['resource_url'];
-            if (imageUrl != null) {
-              localImagePath = await downloadAndSaveImage(
-                imageUrl,
-                releaseId.toString(),
-              );
-            }
+        String? localImagePath;
+        if (rawData['images'] != null &&
+            (rawData['images'] as List).isNotEmpty) {
+          final imageUrl = rawData['images'][0]['resource_url'];
+          if (imageUrl != null) {
+            localImagePath = await downloadAndSaveImage(
+              imageUrl,
+              releaseId.toString(),
+            );
           }
-
-          return _createAlbumFromRawData(rawData, localImagePath);
         }
+
+        return _createAlbumFromRawData(rawData, localImagePath);
       }
     } on DiscogsServiceException {
       rethrow;
@@ -216,23 +214,22 @@ class DiscogsService {
   // endregion
 
   // region 앨범 조회
-  Future<Album?> fetchAlbumById(int releaseId) async {
+  Future<Album> fetchAlbumById(int releaseId) async {
     try {
       final rawData = await _fetchRawAlbumDetails(releaseId);
-      if (rawData != null) {
-        String? localImagePath;
-        if (rawData['images'] != null &&
-            (rawData['images'] as List).isNotEmpty) {
-          final imageUrl = rawData['images'][0]['resource_url'];
-          if (imageUrl != null) {
-            localImagePath = await downloadAndSaveImage(
-              imageUrl,
-              releaseId.toString(),
-            );
-          }
+
+      String? localImagePath;
+      if (rawData['images'] != null &&
+          (rawData['images'] as List).isNotEmpty) {
+        final imageUrl = rawData['images'][0]['resource_url'];
+        if (imageUrl != null) {
+          localImagePath = await downloadAndSaveImage(
+            imageUrl,
+            releaseId.toString(),
+          );
         }
-        return _createAlbumFromRawData(rawData, localImagePath);
       }
+      return _createAlbumFromRawData(rawData, localImagePath);
     } on DiscogsServiceException {
       rethrow;
     } catch (e) {
@@ -241,11 +238,9 @@ class DiscogsService {
         'Discogs 앨범 정보를 불러오는 중 오류가 발생했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
       );
     }
-
-    return null;
   }
 
-  Future<Map<String, dynamic>?> _fetchRawAlbumDetails(int releaseId) async {
+  Future<Map<String, dynamic>> _fetchRawAlbumDetails(int releaseId) async {
     try {
       final response = await _authenticatedGet('/releases/$releaseId');
 
