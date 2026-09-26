@@ -264,5 +264,3 @@ Future<void> _seedAlbumData() async {
     ).toMap(),
   );
 }
-
-

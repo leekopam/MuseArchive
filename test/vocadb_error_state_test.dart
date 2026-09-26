@@ -451,4 +451,3 @@ class _FakeAlbumRepository implements IAlbumRepository {
   @override
   Future<bool> importBackup() async => false;
 }
-

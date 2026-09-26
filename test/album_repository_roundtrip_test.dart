@@ -242,4 +242,3 @@ bool _sameAlbumSet(List<Album> before, List<Album> after) {
   final beforeSet = before.map(normalize).toSet();
   return after.every((album) => beforeSet.contains(normalize(album)));
 }
-
