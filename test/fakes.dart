@@ -11,19 +11,14 @@ import 'package:my_album_app/services/i_album_repository.dart';
 
 /// 인메모리 저장소. widget 테스트에서 실제 Hive IO를 제거해 fakeAsync와 충돌하지 않는다.
 class FakeAlbumRepository implements IAlbumRepository {
-  FakeAlbumRepository({
-    List<Album>? albums,
-    List<Artist>? artists,
-    Map<String, List<String>>? aliases,
-  }) : albums = List.of(albums ?? const []),
-       _artists = {
-         for (final artist in artists ?? const <Artist>[]) artist.name: artist,
-       },
-       _aliases = aliases ?? {};
+  FakeAlbumRepository({List<Album>? albums, List<Artist>? artists})
+    : albums = List.of(albums ?? const []),
+      _artists = {
+        for (final artist in artists ?? const <Artist>[]) artist.name: artist,
+      };
 
   final List<Album> albums;
   final Map<String, Artist> _artists;
-  final Map<String, List<String>> _aliases;
   final ValueNotifier<int> _notifier = ValueNotifier<int>(0);
 
   @override
@@ -92,21 +87,23 @@ class FakeAlbumRepository implements IAlbumRepository {
   @override
   Artist? getArtistByName(String artistName) => _artists[artistName];
 
+  // 실구현 계약: 아티스트 레코드가 없으면 조용히 아무 것도 하지 않는다.
+  // artistBox 변경은 albumBox listenable을 발화시키지 않으므로 _notify도 호출하지 않는다.
   @override
   Future<void> updateArtistImage(
     String artistName,
     String? imagePath,
   ) async {
     final current = _artists[artistName];
+    if (current == null) return;
     _artists[artistName] = Artist(
-      id: current?.id,
+      id: current.id,
       name: artistName,
       imagePath: imagePath,
-      albumIds: current?.albumIds,
-      aliases: current?.aliases,
-      groups: current?.groups,
+      albumIds: current.albumIds,
+      aliases: current.aliases,
+      groups: current.groups,
     );
-    _notify();
   }
 
   @override
@@ -115,25 +112,25 @@ class FakeAlbumRepository implements IAlbumRepository {
     List<String> aliases,
     List<String> groups,
   ) async {
-    _aliases[artistName] = aliases;
     final current = _artists[artistName];
-    _artists[artistName] = current == null
-        ? Artist(name: artistName, aliases: aliases, groups: groups)
-        : current.copyWith(aliases: aliases, groups: groups);
-    _notify();
+    if (current == null) return;
+    _artists[artistName] = current.copyWith(
+      aliases: aliases,
+      groups: groups,
+    );
   }
 
   @override
   List<String> getArtistNamesMatching(String query) {
+    if (query.isEmpty) return const [];
     final lowerQuery = query.toLowerCase();
-    return _aliases.entries
-        .where(
-          (entry) =>
-              entry.key.toLowerCase().contains(lowerQuery) ||
-              entry.value.any((a) => a.toLowerCase().contains(lowerQuery)),
-        )
-        .map((entry) => entry.key)
-        .toList();
+    bool matches(String name, List<String> aliases) =>
+        name.toLowerCase().contains(lowerQuery) ||
+        aliases.any((a) => a.toLowerCase().contains(lowerQuery));
+    return <String>{
+      for (final artist in _artists.values)
+        if (matches(artist.name, artist.aliases)) artist.name,
+    }.toList();
   }
 
   @override

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 import 'package:my_album_app/models/album.dart';
+import 'package:my_album_app/models/artist.dart';
 import 'package:my_album_app/models/track.dart';
 import 'package:my_album_app/services/album_repository.dart';
 
@@ -196,6 +197,34 @@ void main() {
       final artists = repository.getAllArtists();
       expect(artists.length, 2);
       expect(artists.map((a) => a.name).toSet(), {'Artist One', 'Artist Two'});
+    });
+
+    // S08: 아티스트 이미지 교체·삭제가 레코드와 실제 파일에 반영된다
+    test('S08 아티스트 이미지 교체 후 삭제 시 경로와 파일이 함께 지워진다', () async {
+      final docsDir = Directory(path.join(sandbox.path, 'docs'));
+      await docsDir.create(recursive: true);
+      PathProviderPlatform.instance = FakePathProviderPlatform(
+        applicationDocumentsPath: docsDir.path,
+      );
+
+      await artistBox.add(Artist(name: 'Image Artist').toMap());
+
+      final picked = File(path.join(sandbox.path, 'picked_artist.png'));
+      await picked.writeAsBytes(<int>[1, 2, 3]);
+      await repository.updateArtistImage('Image Artist', picked.path);
+
+      var artist = repository.getArtistByName('Image Artist');
+      expect(artist?.imagePath, isNotNull);
+      expect(artist!.imagePath, startsWith('${docsDir.path}/artist_images'));
+
+      final storedPath = artist.imagePath!;
+      await repository.updateArtistImage('Image Artist', null);
+
+      // 회귀: copyWith(imagePath: null)이 기존 경로를 유지해
+      // 파일만 지워지고 레코드에 스테일 경로가 남던 결함이 있었다
+      artist = repository.getArtistByName('Image Artist');
+      expect(artist?.imagePath, isNull);
+      expect(await File(storedPath).exists(), isFalse);
     });
   });
 }

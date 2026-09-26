@@ -66,10 +66,14 @@ class Artist {
   // endregion
 
   // region 불변 복사
+  // '인자 미전달'과 'null 전달'을 구분하는 sentinel — imagePath(nullable)의
+  // 명시적 삭제를 표현하기 위해 사용한다.
+  static const Object _unset = Object();
+
   Artist copyWith({
     String? id,
     String? name,
-    String? imagePath,
+    Object? imagePath = _unset,
     List<String>? albumIds,
     List<String>? aliases,
     List<String>? groups,
@@ -77,7 +81,9 @@ class Artist {
     return Artist(
       id: id ?? this.id,
       name: name ?? this.name,
-      imagePath: imagePath ?? this.imagePath,
+      imagePath: identical(imagePath, _unset)
+          ? this.imagePath
+          : imagePath as String?,
       albumIds: albumIds ?? this.albumIds,
       aliases: aliases ?? this.aliases,
       groups: groups ?? this.groups,
