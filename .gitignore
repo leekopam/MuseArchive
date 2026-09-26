@@ -53,7 +53,19 @@ app.*.map.json
 /analyze_output*.txt
 /testsprite*.tar
 
+# Intentionally tracked project documentation entrypoints.
+!/docs/
+
+# AI agent instructions and workflow docs — 로컬 전용, GitHub 비업로드
+AGENTS*.md
+/docs/Role/
+/docs/SKILL/
+/docs/Machine_Spirit/
+
 # Generated QA and local IDE artifacts
+/artifacts/
+/tools/
+*.md
 /docs/qa/testsprite/tmp/
 /docs/qa/testsprite/cache/
 /docs/qa/testsprite/artifacts/
@@ -64,4 +76,12 @@ app.*.map.json
 /android/**/*.jks
 /android/**/*.keystore
 /test/.idea/
-/\.claude/
+
+# AI agent local runtime state
+/.hermes/
+/.claude/
+/.agents/
+/.codex/
+/.opencode/
+/.cursor/
+/.windsurf/

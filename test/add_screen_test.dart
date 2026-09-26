@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,6 +66,56 @@ void main() {
     });
 
     testWidgets(
+      'shows validation feedback and does not autosave separator-only artists',
+      (WidgetTester tester) async {
+        final repository = _FakeAlbumRepository();
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(repository: repository, child: const AddScreen()),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byType(TextFormField).at(0),
+          'Only Separators',
+        );
+        await tester.enterText(find.byType(TextFormField).at(2), ' , , ');
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+
+        expect(repository.addCalls, 0);
+        expect(repository.updateCalls, 0);
+        expect(find.text('아티스트 이름을 입력해주세요.'), findsOneWidget);
+      },
+    );
+
+    testWidgets('autosaves comma-separated artists as a trimmed list', (
+      WidgetTester tester,
+    ) async {
+      final repository = _FakeAlbumRepository();
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(repository: repository, child: const AddScreen()),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Multi Artist');
+      await tester.enterText(
+        find.byType(TextFormField).at(2),
+        'wowaka, hachi, , DECO*27',
+      );
+      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pumpAndSettle();
+
+      expect(repository.addCalls, 1);
+      expect(repository.lastAddedAlbum?.artists, <String>[
+        'wowaka',
+        'hachi',
+        'DECO*27',
+      ]);
+    });
+
+    testWidgets(
       'autosaves edits through repository.update for existing albums',
       (WidgetTester tester) async {
         final repository = _FakeAlbumRepository();
@@ -119,6 +171,37 @@ void main() {
 
       expect(repository.addCalls, 1);
       expect(find.text('Open AddScreen'), findsOneWidget);
+    });
+
+    testWidgets('back navigation keeps input visible when save fails', (
+      WidgetTester tester,
+    ) async {
+      final repository = _FakeAlbumRepository(
+        addFailure: Exception('disk full'),
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenLauncherApp(
+          repository: repository,
+          child: const AddScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open AddScreen'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'No Pop Album');
+      await tester.enterText(find.byType(TextFormField).at(2), 'wowaka');
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(repository.addCalls, 1);
+      expect(find.text('앨범 추가'), findsOneWidget);
+      expect(find.text('Open AddScreen'), findsNothing);
+      expect(find.text('No Pop Album'), findsOneWidget);
+      expect(find.textContaining('앨범 저장에 실패했습니다'), findsOneWidget);
     });
 
     testWidgets(
@@ -303,6 +386,95 @@ void main() {
       );
     });
 
+    testWidgets('shows Spotify link search errors before empty guidance', (
+      WidgetTester tester,
+    ) async {
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-spotify-error',
+        title: 'Unhappy Refrain',
+        artists: const <String>['wowaka'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        spotifyConfigured: true,
+        spotifySearchError: 'Spotify 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final spotifyLinkSearch = find.byTooltip('Spotify에서 링크 검색');
+      await tester.scrollUntilVisible(
+        spotifyLinkSearch.first,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(spotifyLinkSearch.first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.lastSpotifyQuery, 'Unhappy Refrain');
+      expect(
+        find.text('Spotify 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'),
+        findsOneWidget,
+      );
+      expect(find.text('검색 결과가 없습니다.'), findsNothing);
+      expect(find.text('Spotify 링크 검색 결과'), findsNothing);
+      expect(repository.updateCalls, 0);
+    });
+
+    testWidgets('shows Spotify image search errors before empty guidance', (
+      WidgetTester tester,
+    ) async {
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-spotify-image-error',
+        title: 'Unhappy Refrain',
+        artists: const <String>['wowaka'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        spotifyConfigured: true,
+        spotifySearchError: 'Spotify 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.',
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Spotify에서 검색'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.lastSpotifyQuery, 'Unhappy Refrain');
+      expect(
+        find.text('Spotify 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.'),
+        findsOneWidget,
+      );
+      expect(find.text('검색 결과가 없습니다.'), findsNothing);
+      expect(find.text('Spotify 검색 결과'), findsNothing);
+      expect(repository.updateCalls, 0);
+    });
+
     testWidgets('saves a picked gallery image for an existing album', (
       WidgetTester tester,
     ) async {
@@ -445,6 +617,40 @@ void main() {
       expect(repository.lastUpdatedAlbum?.artists, const <String>[
         'Loaded Artist',
       ]);
+    });
+
+    testWidgets('shows Discogs errors instead of empty result guidance', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = 'Discogs API 토큰이 설정되지 않았습니다. 설정에서 토큰을 입력해주세요.';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-discogs-error',
+        title: 'Unhappy Refrain',
+        artists: const <String>['wowaka'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        discogsSearchError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Discogs에서 검색'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.discogsSearchCalls, 1);
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(find.text('검색 결과가 없습니다.'), findsNothing);
     });
 
     testWidgets('applies a Discogs image search result and autosaves it', (
@@ -599,6 +805,503 @@ void main() {
     });
 
     testWidgets(
+      'shows a non-fatal VocaDB image warning and still autosaves the selected result',
+      (WidgetTester tester) async {
+        const warningMessage =
+            'VocaDB 앨범 정보는 불러왔지만 커버 이미지를 저장하지 못했습니다. 필요하면 이미지를 직접 선택해주세요.';
+        final repository = _FakeAlbumRepository();
+        final existingAlbum = Album(
+          id: 'album-vocadb-partial-image',
+          title: 'Miku Symphony',
+          artists: const <String>['Tokyo Philharmonic Orchestra'],
+        );
+        final loadedAlbum = existingAlbum.copyWith(
+          title: 'Miku Symphony 2024',
+          artists: const <String>['Tokyo Philharmonic Orchestra'],
+        );
+        final viewModel = _FakeAlbumFormViewModel(
+          repository: repository,
+          vocadbSearchResults: const <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 505,
+              'title': 'Miku Symphony Partial Image',
+              'artist': 'Tokyo Philharmonic Orchestra',
+              'year': '2024',
+              'format': 'Album',
+              'thumb': '',
+            },
+          ],
+          loadedVocadbAlbumResult: loadedAlbum,
+          vocadbImageWarning: warningMessage,
+        );
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('VocaDB에서 검색'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+        await tester.pumpAndSettle();
+
+        final vocadbResultTitle = find.text('Miku Symphony Partial Image').last;
+        await tester.ensureVisible(vocadbResultTitle);
+        await tester.tap(vocadbResultTitle);
+        await tester.pump();
+
+        expect(viewModel.loadVocadbAlbumByIdCalls, 1);
+        expect(viewModel.lastVocadbAlbumId, 505);
+        expect(find.text(warningMessage), findsOneWidget);
+        expect(find.textContaining('VocaDB 서버 오류'), findsNothing);
+
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+
+        expect(repository.updateCalls, 1);
+        expect(repository.lastUpdatedAlbum?.title, 'Miku Symphony 2024');
+      },
+    );
+
+    testWidgets('shows VocaDB errors instead of empty result guidance', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = 'VocaDB 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-vocadb-error',
+        title: 'Unhappy Refrain',
+        artists: const <String>['wowaka'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        vocadbSearchError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('VocaDB에서 검색'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.vocadbSearchCalls, 1);
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(find.text('VocaDB 검색 결과가 없습니다.'), findsNothing);
+    });
+
+    testWidgets('does not autosave when selected VocaDB load fails', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = 'VocaDB 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-vocadb-load-error',
+        title: 'Miku Symphony',
+        artists: const <String>['Tokyo Philharmonic Orchestra'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        vocadbSearchResults: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 502,
+            'title': 'Miku Symphony Failed Load',
+            'artist': 'Tokyo Philharmonic Orchestra',
+            'year': '2024',
+            'format': 'Album',
+            'thumb': '',
+          },
+        ],
+        vocadbLoadError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('VocaDB에서 검색'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      final vocadbResultTitle = find.text('Miku Symphony Failed Load').last;
+      await tester.ensureVisible(vocadbResultTitle);
+      await tester.tap(vocadbResultTitle);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1100));
+
+      expect(viewModel.loadVocadbAlbumByIdCalls, 1);
+      expect(viewModel.lastVocadbAlbumId, 502);
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(repository.updateCalls, 0);
+      expect(repository.lastUpdatedAlbum, isNull);
+    });
+
+    testWidgets(
+      'delayed selected VocaDB load failure still shows error after dialog closes',
+      (WidgetTester tester) async {
+        const errorMessage = 'VocaDB 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        final repository = _FakeAlbumRepository();
+        final loadCompleter = Completer<void>();
+        final existingAlbum = Album(
+          id: 'album-vocadb-delayed-failed-load',
+          title: 'Miku Symphony',
+          artists: const <String>['Tokyo Philharmonic Orchestra'],
+        );
+        final viewModel = _FakeAlbumFormViewModel(
+          repository: repository,
+          vocadbSearchResults: const <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 503,
+              'title': 'Miku Symphony Delayed Failed Load',
+              'artist': 'Tokyo Philharmonic Orchestra',
+              'year': '2024',
+              'format': 'Album',
+              'thumb': '',
+            },
+          ],
+          vocadbLoadError: errorMessage,
+          vocadbLoadFuture: loadCompleter.future,
+        );
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('VocaDB에서 검색'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+        await tester.pumpAndSettle();
+
+        final vocadbResultTitle = find
+            .text('Miku Symphony Delayed Failed Load')
+            .last;
+        await tester.ensureVisible(vocadbResultTitle);
+        await tester.tap(vocadbResultTitle);
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(find.text('VocaDB 검색 결과'), findsNothing);
+        expect(viewModel.loadVocadbAlbumByIdCalls, 1);
+        expect(viewModel.lastVocadbAlbumId, 503);
+
+        loadCompleter.complete();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(find.text(errorMessage), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 1100));
+        expect(repository.updateCalls, 0);
+        expect(repository.lastUpdatedAlbum, isNull);
+      },
+    );
+
+    testWidgets(
+      'delayed selected VocaDB load success still autosaves after dialog closes',
+      (WidgetTester tester) async {
+        final repository = _FakeAlbumRepository();
+        final loadCompleter = Completer<void>();
+        final existingAlbum = Album(
+          id: 'album-vocadb-delayed-load',
+          title: 'Miku Symphony Delayed Load',
+          artists: const <String>['Tokyo Philharmonic Orchestra'],
+        );
+        final loadedAlbum = existingAlbum.copyWith(
+          title: 'Miku Symphony Delayed Load',
+          artists: const <String>['Tokyo Philharmonic Orchestra'],
+        );
+        final viewModel = _FakeAlbumFormViewModel(
+          repository: repository,
+          vocadbSearchResults: const <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 504,
+              'title': 'Miku Symphony Delayed Load',
+              'artist': 'Tokyo Philharmonic Orchestra',
+              'year': '2024',
+              'format': 'Album',
+              'thumb': '',
+            },
+          ],
+          loadedVocadbAlbumResult: loadedAlbum,
+          vocadbLoadFuture: loadCompleter.future,
+        );
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('VocaDB에서 검색'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+        await tester.pumpAndSettle();
+
+        final vocadbResultTitle = find.text('Miku Symphony Delayed Load').last;
+        await tester.ensureVisible(vocadbResultTitle);
+        await tester.tap(vocadbResultTitle);
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(find.text('VocaDB 검색 결과'), findsNothing);
+        expect(viewModel.loadVocadbAlbumByIdCalls, 1);
+        expect(viewModel.lastVocadbAlbumId, 504);
+        expect(repository.updateCalls, 0);
+
+        loadCompleter.complete();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+
+        expect(repository.updateCalls, 1);
+        expect(repository.lastUpdatedAlbumId, 'album-vocadb-delayed-load');
+        expect(
+          repository.lastUpdatedAlbum?.title,
+          'Miku Symphony Delayed Load',
+        );
+      },
+    );
+
+    testWidgets('shows MusicBrainz search errors instead of empty guidance', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = 'MusicBrainz 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-musicbrainz-search-error',
+        title: 'Black Album',
+        artists: const <String>['Metallica'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        musicBrainzSearchError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('MusicBrainz에서 검색'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.musicBrainzSearchCalls, 1);
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(find.text('MusicBrainz 검색 결과가 없습니다.'), findsNothing);
+      expect(find.text('MusicBrainz 검색 결과'), findsNothing);
+      expect(repository.updateCalls, 0);
+    });
+
+    testWidgets('does not autosave when selected MusicBrainz load fails', (
+      WidgetTester tester,
+    ) async {
+      const errorMessage = 'MusicBrainz 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      final repository = _FakeAlbumRepository();
+      final existingAlbum = Album(
+        id: 'album-musicbrainz-failed-load',
+        title: 'Black Album',
+        artists: const <String>['Metallica'],
+      );
+      final viewModel = _FakeAlbumFormViewModel(
+        repository: repository,
+        musicBrainzSearchResults: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'mbid-failed-load',
+            'title': 'Metallica Failed Load',
+            'artist': 'Metallica',
+            'year': '1991',
+            'format': 'CD',
+          },
+        ],
+        musicBrainzLoadError: errorMessage,
+      );
+
+      await tester.pumpWidget(
+        _buildAddScreenApp(
+          repository: repository,
+          viewModel: viewModel,
+          child: AddScreen(albumToEdit: existingAlbum),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('MusicBrainz에서 검색'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+      await tester.pumpAndSettle();
+
+      final musicBrainzResultTitle = find.text('Metallica Failed Load').last;
+      await tester.ensureVisible(musicBrainzResultTitle);
+      await tester.tap(musicBrainzResultTitle);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1100));
+
+      expect(viewModel.loadMusicBrainzAlbumByIdCalls, 1);
+      expect(viewModel.lastMusicBrainzAlbumId, 'mbid-failed-load');
+      expect(find.text(errorMessage), findsOneWidget);
+      expect(repository.updateCalls, 0);
+      expect(repository.lastUpdatedAlbum, isNull);
+    });
+
+    testWidgets(
+      'delayed selected MusicBrainz load failure still shows error after dialog closes',
+      (WidgetTester tester) async {
+        const errorMessage = 'MusicBrainz 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        final repository = _FakeAlbumRepository();
+        final loadCompleter = Completer<void>();
+        final existingAlbum = Album(
+          id: 'album-musicbrainz-delayed-failed-load',
+          title: 'Black Album',
+          artists: const <String>['Metallica'],
+        );
+        final viewModel = _FakeAlbumFormViewModel(
+          repository: repository,
+          musicBrainzSearchResults: const <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'mbid-delayed-failed-load',
+              'title': 'Metallica Delayed Failed Load',
+              'artist': 'Metallica',
+              'year': '1991',
+              'format': 'CD',
+            },
+          ],
+          musicBrainzLoadError: errorMessage,
+          musicBrainzLoadFuture: loadCompleter.future,
+        );
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('MusicBrainz에서 검색'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+        await tester.pumpAndSettle();
+
+        final musicBrainzResultTitle = find
+            .text('Metallica Delayed Failed Load')
+            .last;
+        await tester.ensureVisible(musicBrainzResultTitle);
+        await tester.tap(musicBrainzResultTitle);
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(find.text('MusicBrainz 검색 결과'), findsNothing);
+        expect(viewModel.loadMusicBrainzAlbumByIdCalls, 1);
+        expect(viewModel.lastMusicBrainzAlbumId, 'mbid-delayed-failed-load');
+
+        loadCompleter.complete();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(find.text(errorMessage), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 1100));
+        expect(repository.updateCalls, 0);
+        expect(repository.lastUpdatedAlbum, isNull);
+      },
+    );
+
+    testWidgets(
+      'delayed selected MusicBrainz load success still autosaves after dialog closes',
+      (WidgetTester tester) async {
+        final repository = _FakeAlbumRepository();
+        final loadCompleter = Completer<void>();
+        final existingAlbum = Album(
+          id: 'album-musicbrainz-delayed-load',
+          title: 'Metallica Delayed Load',
+          artists: const <String>['Metallica'],
+        );
+        final loadedAlbum = existingAlbum.copyWith(
+          title: 'Metallica Delayed Load',
+          artists: const <String>['Metallica'],
+        );
+        final viewModel = _FakeAlbumFormViewModel(
+          repository: repository,
+          musicBrainzSearchResults: const <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'mbid-delayed-load',
+              'title': 'Metallica Delayed Load',
+              'artist': 'Metallica',
+              'year': '1991',
+              'format': 'CD',
+            },
+          ],
+          loadedMusicBrainzAlbumResult: loadedAlbum,
+          musicBrainzLoadFuture: loadCompleter.future,
+        );
+
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('MusicBrainz에서 검색'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+        await tester.pumpAndSettle();
+
+        final musicBrainzResultTitle = find.text('Metallica Delayed Load').last;
+        await tester.ensureVisible(musicBrainzResultTitle);
+        await tester.tap(musicBrainzResultTitle);
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(find.text('MusicBrainz 검색 결과'), findsNothing);
+        expect(viewModel.loadMusicBrainzAlbumByIdCalls, 1);
+        expect(viewModel.lastMusicBrainzAlbumId, 'mbid-delayed-load');
+        expect(repository.updateCalls, 0);
+
+        loadCompleter.complete();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+
+        expect(repository.updateCalls, 1);
+        expect(repository.lastUpdatedAlbumId, 'album-musicbrainz-delayed-load');
+        expect(repository.lastUpdatedAlbum?.title, 'Metallica Delayed Load');
+      },
+    );
+
+    testWidgets(
       'builds the MusicBrainz query and autosaves the selected result',
       (WidgetTester tester) async {
         final repository = _FakeAlbumRepository();
@@ -726,7 +1429,10 @@ class _AddScreenLauncher extends StatelessWidget {
 }
 
 class _FakeAlbumRepository implements IAlbumRepository {
+  _FakeAlbumRepository({this.addFailure});
+
   final ValueNotifier<Object?> _listenable = ValueNotifier<Object?>(null);
+  final Object? addFailure;
 
   int addCalls = 0;
   int updateCalls = 0;
@@ -747,6 +1453,10 @@ class _FakeAlbumRepository implements IAlbumRepository {
   Future<void> add(Album album) async {
     addCalls += 1;
     lastAddedAlbum = album;
+    final failure = addFailure;
+    if (failure != null) {
+      throw failure;
+    }
   }
 
   @override
@@ -817,14 +1527,23 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
     required this.repository,
     this.spotifyConfigured = true,
     this.spotifyResults = const <Map<String, String>>[],
+    this.spotifySearchError,
     this.pickedImagePath,
     this.discogsSearchResults = const <Map<String, dynamic>>[],
+    this.discogsSearchError,
     this.loadedAlbumResult,
     this.discogsCoverResultPath,
     this.vocadbSearchResults = const <Map<String, dynamic>>[],
+    this.vocadbSearchError,
     this.loadedVocadbAlbumResult,
+    this.vocadbLoadError,
+    this.vocadbLoadFuture,
+    this.vocadbImageWarning,
     this.musicBrainzSearchResults = const <Map<String, dynamic>>[],
+    this.musicBrainzSearchError,
     this.loadedMusicBrainzAlbumResult,
+    this.musicBrainzLoadError,
+    this.musicBrainzLoadFuture,
     this.barcodeAlbumResult,
   }) : super(
          repository,
@@ -837,14 +1556,23 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   final _FakeAlbumRepository repository;
   final bool spotifyConfigured;
   final List<Map<String, String>> spotifyResults;
+  final String? spotifySearchError;
   final String? pickedImagePath;
   final List<Map<String, dynamic>> discogsSearchResults;
+  final String? discogsSearchError;
   final Album? loadedAlbumResult;
   final String? discogsCoverResultPath;
   final List<Map<String, dynamic>> vocadbSearchResults;
+  final String? vocadbSearchError;
   final Album? loadedVocadbAlbumResult;
+  final String? vocadbLoadError;
+  final Future<void>? vocadbLoadFuture;
+  final String? vocadbImageWarning;
   final List<Map<String, dynamic>> musicBrainzSearchResults;
+  final String? musicBrainzSearchError;
   final Album? loadedMusicBrainzAlbumResult;
+  final String? musicBrainzLoadError;
+  final Future<void>? musicBrainzLoadFuture;
   final Album? barcodeAlbumResult;
 
   int spotifySearchCalls = 0;
@@ -867,6 +1595,27 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   String? lastMusicBrainzAlbumId;
   int barcodeSearchCalls = 0;
   String? lastBarcodeQuery;
+  String? _fakeErrorMessage;
+  String? _fakeVocadbImageWarningMessage;
+
+  @override
+  String? get errorMessage => _fakeErrorMessage ?? super.errorMessage;
+
+  @override
+  String? get vocadbImageWarningMessage =>
+      _fakeVocadbImageWarningMessage ?? super.vocadbImageWarningMessage;
+
+  @override
+  void clearError() {
+    _fakeErrorMessage = null;
+    super.clearError();
+  }
+
+  @override
+  void clearVocadbImageWarning() {
+    _fakeVocadbImageWarningMessage = null;
+    super.clearVocadbImageWarning();
+  }
 
   @override
   Future<bool> isSpotifyConfigured() async => spotifyConfigured;
@@ -877,6 +1626,11 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   ) async {
     spotifySearchCalls += 1;
     lastSpotifyQuery = query;
+    final error = spotifySearchError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      return const <Map<String, String>>[];
+    }
     return spotifyResults;
   }
 
@@ -894,6 +1648,11 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
     discogsSearchCalls += 1;
     lastDiscogsArtist = artist;
     lastDiscogsTitle = title;
+    final error = discogsSearchError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      return const <Map<String, dynamic>>[];
+    }
     return discogsSearchResults;
   }
 
@@ -932,6 +1691,12 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   Future<List<Map<String, dynamic>>> searchVocadb(String query) async {
     vocadbSearchCalls += 1;
     lastVocadbQuery = query;
+    final error = vocadbSearchError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      notifyListeners();
+      return const <Map<String, dynamic>>[];
+    }
     return vocadbSearchResults;
   }
 
@@ -939,6 +1704,18 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   Future<void> loadVocadbAlbumById(int id) async {
     loadVocadbAlbumByIdCalls += 1;
     lastVocadbAlbumId = id;
+    final loadFuture = vocadbLoadFuture;
+    if (loadFuture != null) {
+      await loadFuture;
+    }
+    final error = vocadbLoadError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      _fakeVocadbImageWarningMessage = null;
+      notifyListeners();
+      return;
+    }
+    _fakeVocadbImageWarningMessage = vocadbImageWarning;
     final albumToApply =
         loadedVocadbAlbumResult ??
         currentAlbum?.copyWith(
@@ -954,6 +1731,12 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   Future<List<Map<String, dynamic>>> searchMusicBrainz(String query) async {
     musicBrainzSearchCalls += 1;
     lastMusicBrainzQuery = query;
+    final error = musicBrainzSearchError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      notifyListeners();
+      return const <Map<String, dynamic>>[];
+    }
     return musicBrainzSearchResults;
   }
 
@@ -961,6 +1744,16 @@ class _FakeAlbumFormViewModel extends AlbumFormViewModel {
   Future<void> loadMusicBrainzAlbumById(String mbid) async {
     loadMusicBrainzAlbumByIdCalls += 1;
     lastMusicBrainzAlbumId = mbid;
+    final loadFuture = musicBrainzLoadFuture;
+    if (loadFuture != null) {
+      await loadFuture;
+    }
+    final error = musicBrainzLoadError;
+    if (error != null) {
+      _fakeErrorMessage = error;
+      notifyListeners();
+      return;
+    }
     final albumToApply =
         loadedMusicBrainzAlbumResult ??
         currentAlbum?.copyWith(

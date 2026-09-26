@@ -25,6 +25,7 @@ class AlbumFormViewModel extends ChangeNotifier {
   Album? _currentAlbum;
   bool _isLoading = false;
   String? _errorMessage;
+  String? _vocadbImageWarningMessage;
   bool _hasUnsavedChanges = false;
   //endregion
 
@@ -34,6 +35,7 @@ class AlbumFormViewModel extends ChangeNotifier {
   Album? get currentAlbum => _currentAlbum;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  String? get vocadbImageWarningMessage => _vocadbImageWarningMessage;
   bool get hasUnsavedChanges => _hasUnsavedChanges;
   //endregion
 
@@ -69,6 +71,8 @@ class AlbumFormViewModel extends ChangeNotifier {
       );
     }
     _hasUnsavedChanges = false;
+    _errorMessage = null;
+    _vocadbImageWarningMessage = null;
     Future.microtask(notifyListeners);
   }
 
@@ -140,7 +144,13 @@ class AlbumFormViewModel extends ChangeNotifier {
         );
         _hasUnsavedChanges = true;
       } else {
-        _errorMessage = '이미지를 저장할 수 없습니다.';
+        if (linkUrl != null && linkUrl.isNotEmpty) {
+          _currentAlbum = _currentAlbum?.copyWith(linkUrl: linkUrl);
+          _hasUnsavedChanges = _currentAlbum != null;
+          _errorMessage = '커버 이미지를 저장하지 못했습니다. Spotify 링크만 적용했습니다.';
+        } else {
+          _errorMessage = '이미지를 저장할 수 없습니다.';
+        }
       }
     } catch (e) {
       _errorMessage = '이미지 업데이트 실패: $e';
@@ -154,11 +164,12 @@ class AlbumFormViewModel extends ChangeNotifier {
     String query,
   ) async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
     try {
       return await _spotifyService.searchAlbums(query);
     } catch (e) {
-      _errorMessage = 'Spotify 검색 실패: $e';
+      _errorMessage = _spotifyErrorMessage(e);
       return [];
     } finally {
       _isLoading = false;
@@ -202,7 +213,7 @@ class AlbumFormViewModel extends ChangeNotifier {
         _errorMessage = '앨범을 찾을 수 없습니다.';
       }
     } catch (e) {
-      _errorMessage = '검색 중 오류가 발생했습니다: $e';
+      _errorMessage = _discogsErrorMessage(e, '검색 중 오류가 발생했습니다');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -224,7 +235,7 @@ class AlbumFormViewModel extends ChangeNotifier {
       );
       return results;
     } catch (e) {
-      _errorMessage = '검색 중 오류가 발생했습니다: $e';
+      _errorMessage = _discogsErrorMessage(e, '검색 중 오류가 발생했습니다');
       return [];
     } finally {
       _isLoading = false;
@@ -264,7 +275,7 @@ class AlbumFormViewModel extends ChangeNotifier {
         _errorMessage = '앨범 정보를 불러올 수 없습니다.';
       }
     } catch (e) {
-      _errorMessage = '앨범 로드 중 오류가 발생했습니다: $e';
+      _errorMessage = _discogsErrorMessage(e, '앨범 로드 중 오류가 발생했습니다');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -278,13 +289,14 @@ class AlbumFormViewModel extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> searchVocadb(String query) async {
     _isLoading = true;
     _errorMessage = null;
+    _vocadbImageWarningMessage = null;
     notifyListeners();
 
     try {
       final results = await _vocadbService.searchAlbums(query);
       return results;
     } catch (e) {
-      _errorMessage = 'VocaDB 검색 중 오류가 발생했습니다: $e';
+      _errorMessage = _vocadbErrorMessage(e, 'VocaDB 검색 중 오류가 발생했습니다');
       return [];
     } finally {
       _isLoading = false;
@@ -295,6 +307,7 @@ class AlbumFormViewModel extends ChangeNotifier {
   Future<void> loadVocadbAlbumById(int id) async {
     _isLoading = true;
     _errorMessage = null;
+    _vocadbImageWarningMessage = null;
     notifyListeners();
 
     try {
@@ -319,12 +332,14 @@ class AlbumFormViewModel extends ChangeNotifier {
                   : album.description,
             ) ??
             album;
+        _vocadbImageWarningMessage = _vocadbService.lastImageDownloadWarning;
         _hasUnsavedChanges = true;
       } else {
-        _errorMessage = 'VocaDB 앨범 정보를 불러올 수 없습니다.';
+        _errorMessage = 'VocaDB에서 해당 앨범을 찾을 수 없습니다.';
       }
     } catch (e) {
-      _errorMessage = 'VocaDB 앨범 로드 중 오류가 발생했습니다: $e';
+      _vocadbImageWarningMessage = null;
+      _errorMessage = _vocadbErrorMessage(e, 'VocaDB 앨범 로드 중 오류가 발생했습니다');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -344,8 +359,10 @@ class AlbumFormViewModel extends ChangeNotifier {
       final results = await _musicBrainzService.searchAlbums(query);
       return results;
     } catch (e) {
-      final msg = e.toString().replaceFirst('Exception: ', '');
-      _errorMessage = msg;
+      _errorMessage = _musicBrainzErrorMessage(
+        e,
+        'MusicBrainz 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+      );
       return [];
     } finally {
       _isLoading = false;
@@ -382,11 +399,13 @@ class AlbumFormViewModel extends ChangeNotifier {
             album;
         _hasUnsavedChanges = true;
       } else {
-        _errorMessage = 'MusicBrainz 앨범 정보를 불러올 수 없습니다.';
+        _errorMessage = 'MusicBrainz에서 해당 앨범을 찾을 수 없습니다.';
       }
     } catch (e) {
-      final msg = e.toString().replaceFirst('Exception: ', '');
-      _errorMessage = msg;
+      _errorMessage = _musicBrainzErrorMessage(
+        e,
+        'MusicBrainz 앨범 로드 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+      );
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -466,8 +485,47 @@ class AlbumFormViewModel extends ChangeNotifier {
   // endregion
 
   // region 유틸리티 메서드
+  String _discogsErrorMessage(Object error, String fallbackPrefix) {
+    if (error is DiscogsServiceException) {
+      return error.message;
+    }
+
+    final message = error.toString().replaceFirst('Exception: ', '');
+    return '$fallbackPrefix: $message';
+  }
+
+  String _vocadbErrorMessage(Object error, String fallbackPrefix) {
+    if (error is VocadbServiceException) {
+      return error.message;
+    }
+
+    final message = error.toString().replaceFirst('Exception: ', '');
+    return '$fallbackPrefix: $message';
+  }
+
+  String _spotifyErrorMessage(Object error) {
+    if (error is SpotifyServiceException) {
+      return error.message;
+    }
+
+    return 'Spotify 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+  }
+
+  String _musicBrainzErrorMessage(Object error, String fallbackMessage) {
+    if (error is MusicBrainzServiceException) {
+      return error.message;
+    }
+
+    return fallbackMessage;
+  }
+
   void clearError() {
     _errorMessage = null;
+    notifyListeners();
+  }
+
+  void clearVocadbImageWarning() {
+    _vocadbImageWarningMessage = null;
     notifyListeners();
   }
 

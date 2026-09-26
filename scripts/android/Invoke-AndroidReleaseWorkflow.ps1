@@ -1,6 +1,7 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$ProjectRoot,
+    [string]$FlutterPath,
     [switch]$GenerateKeystore,
     [switch]$InstallApk,
     [string]$DeviceId,
@@ -10,6 +11,38 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Resolve-FlutterPath {
+    param([string]$RequestedPath)
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        $resolvedRequestedPath = [System.IO.Path]::GetFullPath($RequestedPath)
+        if (-not (Test-Path $resolvedRequestedPath -PathType Leaf)) {
+            throw "Flutter executable not found at $resolvedRequestedPath"
+        }
+
+        return $resolvedRequestedPath
+    }
+
+    $flutterCommand = Get-Command flutter -ErrorAction SilentlyContinue
+    if ($flutterCommand) {
+        return $flutterCommand.Source
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:FLUTTER_ROOT)) {
+        $flutterFromEnvironment = Join-Path $env:FLUTTER_ROOT "bin\flutter.bat"
+        if (Test-Path $flutterFromEnvironment -PathType Leaf) {
+            return $flutterFromEnvironment
+        }
+    }
+
+    $defaultFlutterPath = "C:\flutter\flutter\bin\flutter.bat"
+    if (Test-Path $defaultFlutterPath -PathType Leaf) {
+        return $defaultFlutterPath
+    }
+
+    throw "Flutter executable was not found. Add Flutter to PATH, set FLUTTER_ROOT, or pass -FlutterPath."
+}
+
 if (-not $ProjectRoot) {
     $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
@@ -18,7 +51,6 @@ $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 $readinessScript = Join-Path $ProjectRoot "scripts\android\Get-AndroidReleaseReadiness.ps1"
 $keystoreScript = Join-Path $ProjectRoot "scripts\android\New-AndroidReleaseKeystore.ps1"
 $smokeScript = Join-Path $ProjectRoot "scripts\android\Invoke-AndroidDeviceSmoke.ps1"
-$flutterPath = "C:\flutter\flutter\bin\flutter.bat"
 $keyPropertiesPath = Join-Path $ProjectRoot "android\key.properties"
 
 if (-not (Test-Path $readinessScript)) {
@@ -55,13 +87,12 @@ if ($GenerateKeystore -and -not (Test-Path $keyPropertiesPath)) {
 }
 
 if (-not $SkipBuild) {
-    if (-not (Test-Path $flutterPath)) {
-        throw "Flutter executable not found at $flutterPath"
-    }
+    $resolvedFlutterPath = Resolve-FlutterPath -RequestedPath $FlutterPath
 
     Write-Host ""
     Write-Host "Step 3/4: building release APK"
-    & $flutterPath build apk --release
+    Write-Host "Flutter: $resolvedFlutterPath"
+    & $resolvedFlutterPath build apk --release
     if ($LASTEXITCODE -ne 0) {
         throw "flutter build apk --release failed with exit code $LASTEXITCODE"
     }

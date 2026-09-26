@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -9,12 +10,31 @@ import '../models/album.dart';
 import '../models/track.dart';
 import '../models/value_objects/release_date.dart';
 
+typedef MusicBrainzHttpGet =
+    Future<http.Response> Function(Uri uri, {Map<String, String>? headers});
+
+/// MusicBrainz 요청 실패를 UI 계층까지 전달하기 위한 예외
+class MusicBrainzServiceException implements Exception {
+  const MusicBrainzServiceException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// MusicBrainz API 서비스
 class MusicBrainzService {
   // region 싱글톤 패턴
   static final MusicBrainzService _instance = MusicBrainzService._internal();
   factory MusicBrainzService() => _instance;
-  MusicBrainzService._internal();
+  MusicBrainzService._internal() : _httpGet = http.get;
+
+  @visibleForTesting
+  MusicBrainzService.forTesting({MusicBrainzHttpGet? get})
+    : _httpGet = get ?? http.get;
+
+  final MusicBrainzHttpGet _httpGet;
   //endregion
 
   // region 상수
@@ -36,10 +56,23 @@ class MusicBrainzService {
     final headers = {'User-Agent': _userAgent, 'Accept': 'application/json'};
 
     try {
-      return await http.get(uri, headers: headers);
-    } on SocketException {
-      throw Exception('네트워크 연결을 확인해주세요.');
+      return await _httpGet(uri, headers: headers);
+    } catch (e) {
+      debugPrint('MusicBrainz 요청 오류: $e');
+      throw const MusicBrainzServiceException(
+        'MusicBrainz 요청 중 오류가 발생했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
     }
+  }
+
+  static String _messageForStatusCode(int statusCode) {
+    if (statusCode == 429) {
+      return 'MusicBrainz 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
+    }
+    if (statusCode >= 500) {
+      return 'MusicBrainz 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+    }
+    return 'MusicBrainz 요청에 실패했습니다. 상태 코드: $statusCode';
   }
   //endregion
 
@@ -48,106 +81,139 @@ class MusicBrainzService {
   Future<List<Map<String, dynamic>>> searchAlbums(String query) async {
     if (query.trim().isEmpty) return [];
 
-    // rate limit(503) 시 1회 재시도
-    late http.Response response;
-    for (int attempt = 0; attempt < 2; attempt++) {
-      response = await _get(
-        '/release/',
-        queryParams: {
-          'query': query,
-          'limit': '20',
-        },
-      );
+    try {
+      // rate limit(503) 시 1회 재시도
+      late http.Response response;
+      for (int attempt = 0; attempt < 2; attempt++) {
+        response = await _get(
+          '/release/',
+          queryParams: {'query': query, 'limit': '20'},
+        );
 
-      if (response.statusCode == 503) {
-        if (attempt == 0) {
-          await Future.delayed(const Duration(seconds: 2));
-          continue;
+        if (response.statusCode == 503) {
+          if (attempt == 0) {
+            await Future.delayed(const Duration(seconds: 2));
+            continue;
+          }
+          throw MusicBrainzServiceException(
+            _messageForStatusCode(response.statusCode),
+          );
         }
-        throw Exception('MusicBrainz 서버가 일시적으로 사용 불가합니다. 잠시 후 다시 시도해주세요.');
+
+        break;
       }
 
-      break;
+      if (response.statusCode != 200) {
+        throw MusicBrainzServiceException(
+          _messageForStatusCode(response.statusCode),
+        );
+      }
+
+      final searchData = jsonDecode(response.body);
+      if (searchData is! Map<String, dynamic>) {
+        throw const FormatException('MusicBrainz 검색 응답 형식이 올바르지 않습니다.');
+      }
+      final releases = searchData['releases'];
+      if (releases is! List) {
+        throw const FormatException('MusicBrainz 검색 결과 목록이 없습니다.');
+      }
+
+      return releases.map(_releaseToSearchResult).toList();
+    } on MusicBrainzServiceException {
+      rethrow;
+    } catch (e) {
+      debugPrint('MusicBrainz 검색 오류: $e');
+      throw const MusicBrainzServiceException(
+        'MusicBrainz 검색 응답을 처리할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
+    }
+  }
+
+  Map<String, dynamic> _releaseToSearchResult(dynamic item) {
+    if (item is! Map<String, dynamic>) {
+      throw const FormatException('MusicBrainz 검색 항목 형식이 올바르지 않습니다.');
     }
 
-    if (response.statusCode != 200) {
-      throw Exception('MusicBrainz 검색 실패 (HTTP ${response.statusCode})');
+    final id = item['id'] ?? '';
+    final title = item['title'] ?? '';
+
+    // 아티스트 파싱
+    String artist = '';
+    final artistCredits = item['artist-credit'];
+    if (artistCredits is List && artistCredits.isNotEmpty) {
+      artist = artistCredits
+          .whereType<Map<String, dynamic>>()
+          .map((ac) => ac['name']?.toString() ?? '')
+          .where((name) => name.isNotEmpty)
+          .join(', ');
     }
 
-    final searchData = jsonDecode(response.body);
-    final releases = searchData['releases'] as List? ?? [];
+    // 발매일에서 연도 추출
+    String year = '';
+    final date = item['date']?.toString() ?? '';
+    if (date.isNotEmpty) {
+      year = date.length >= 4 ? date.substring(0, 4) : date;
+    }
 
-    return releases.map((item) {
-      final id = item['id'] ?? '';
-      final title = item['title'] ?? '';
-
-      // 아티스트 파싱
-      String artist = '';
-      if (item['artist-credit'] != null &&
-          (item['artist-credit'] as List).isNotEmpty) {
-        artist = (item['artist-credit'] as List)
-            .map((ac) => ac['name'] ?? '')
-            .where((name) => name.isNotEmpty)
-            .join(', ');
+    // 포맷 (media에서 추출)
+    String format = '';
+    final media = item['media'];
+    if (media is List && media.isNotEmpty) {
+      final firstMedia = media.first;
+      if (firstMedia is Map<String, dynamic>) {
+        format = firstMedia['format']?.toString() ?? '';
       }
+    }
 
-      // 발매일에서 연도 추출
-      String year = '';
-      final date = item['date']?.toString() ?? '';
-      if (date.isNotEmpty) {
-        year = date.length >= 4 ? date.substring(0, 4) : date;
-      }
-
-      // 포맷 (media에서 추출)
-      String format = '';
-      if (item['media'] != null && (item['media'] as List).isNotEmpty) {
-        format = item['media'][0]['format']?.toString() ?? '';
-      }
-
-      return {
-        'id': id,
-        'title': title,
-        'artist': artist,
-        'year': year,
-        'thumb': null, // 검색 결과에서 이미지 로드 시 연결 풀 점유로 API 타임아웃 발생
-        'format': format,
-      };
-    }).toList();
+    return {
+      'id': id,
+      'title': title,
+      'artist': artist,
+      'year': year,
+      'thumb': null, // 검색 결과에서 이미지 로드 시 연결 풀 점유로 API 타임아웃 발생
+      'format': format,
+    };
   }
   //endregion
 
   // region 앨범 상세 조회
   /// MBID로 앨범 상세 정보 조회
   Future<Album?> fetchAlbumById(String mbid) async {
-    // 앨범 상세 API와 커버아트 다운로드를 병렬 시작
-    final apiFuture = _fetchReleaseData(mbid);
-    final imageFuture = downloadAndSaveImage(mbid);
-
-    // API 데이터는 필수 — 완료까지 대기
-    final rawData = await apiFuture;
-
-    // 이미지는 API 완료 후 추가 3초만 대기, 초과 시 이미지 없이 진행
-    String? localImagePath;
     try {
-      localImagePath = await imageFuture.timeout(
-        const Duration(seconds: 3),
-      );
-    } on TimeoutException {
-      debugPrint('MusicBrainz 커버아트 다운로드 타임아웃 — 이미지 없이 진행');
-    }
+      // API 데이터는 필수 — 조회 실패 시 커버아트 다운로드를 시작하지 않음
+      final rawData = await _fetchReleaseData(mbid);
+      if (rawData == null) {
+        return null;
+      }
 
-    return _createAlbumFromRawData(rawData, localImagePath, mbid);
+      // 이미지는 API 완료 후 추가 3초만 대기, 초과 시 이미지 없이 진행
+      String? localImagePath;
+      try {
+        localImagePath = await downloadAndSaveImage(
+          mbid,
+        ).timeout(const Duration(seconds: 3));
+      } on TimeoutException {
+        debugPrint('MusicBrainz 커버아트 다운로드 타임아웃 — 이미지 없이 진행');
+      }
+
+      return _createAlbumFromRawData(rawData, localImagePath, mbid);
+    } on MusicBrainzServiceException {
+      rethrow;
+    } catch (e) {
+      debugPrint('MusicBrainz ID 검색 오류: $e');
+      throw const MusicBrainzServiceException(
+        'MusicBrainz 앨범 응답을 처리할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
+    }
   }
 
   /// 릴리스 상세 데이터 조회 (503 재시도 포함)
-  Future<Map<String, dynamic>> _fetchReleaseData(String mbid) async {
+  Future<Map<String, dynamic>?> _fetchReleaseData(String mbid) async {
     late http.Response response;
     for (int attempt = 0; attempt < 2; attempt++) {
       response = await _get(
         '/release/$mbid',
-        queryParams: {
-          'inc': 'recordings+artists+labels+media',
-        },
+        queryParams: {'inc': 'recordings+artists+labels+media'},
       );
 
       if (response.statusCode == 503) {
@@ -155,17 +221,29 @@ class MusicBrainzService {
           await Future.delayed(const Duration(seconds: 2));
           continue;
         }
-        throw Exception('MusicBrainz 서버가 일시적으로 사용 불가합니다. 잠시 후 다시 시도해주세요.');
+        throw MusicBrainzServiceException(
+          _messageForStatusCode(response.statusCode),
+        );
       }
 
       break;
     }
 
+    if (response.statusCode == 404) {
+      return null;
+    }
     if (response.statusCode != 200) {
-      throw Exception('MusicBrainz 앨범 조회 실패 (HTTP ${response.statusCode})');
+      throw MusicBrainzServiceException(
+        _messageForStatusCode(response.statusCode),
+      );
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final rawData = jsonDecode(response.body);
+    if (rawData is! Map<String, dynamic>) {
+      throw const FormatException('MusicBrainz 앨범 응답 형식이 올바르지 않습니다.');
+    }
+
+    return rawData;
   }
   //endregion
 
@@ -229,9 +307,7 @@ class MusicBrainzService {
         if (media['tracks'] != null) {
           for (var track in (media['tracks'] as List)) {
             final trackTitle = track['title']?.toString() ?? '';
-            tracks.add(
-              Track(title: trackTitle, titleKr: '', isHeader: false),
-            );
+            tracks.add(Track(title: trackTitle, titleKr: '', isHeader: false));
           }
         }
       }
@@ -268,12 +344,17 @@ class MusicBrainzService {
   /// Cover Art Archive에서 프론트 커버 다운로드
   Future<String?> downloadAndSaveImage(String mbid) async {
     try {
-      final response = await http.get(
+      final response = await _httpGet(
         Uri.parse('$_coverArtBaseUrl/release/$mbid/front-500'),
         headers: {'User-Agent': _userAgent},
       );
 
       if (response.statusCode == 200) {
+        if (!await _isDecodableImage(response.bodyBytes)) {
+          debugPrint('MusicBrainz 이미지 다운로드 실패: 디코딩할 수 없는 이미지 데이터');
+          return null;
+        }
+
         final directory = await getTemporaryDirectory();
         final localPath = path.join(directory.path, 'musicbrainz_$mbid.jpg');
         final imageFile = File(localPath);
@@ -286,5 +367,23 @@ class MusicBrainzService {
 
     return null;
   }
+
+  Future<bool> _isDecodableImage(Uint8List imageBytes) async {
+    if (imageBytes.isEmpty) {
+      return false;
+    }
+
+    ui.Codec? codec;
+    try {
+      codec = await ui.instantiateImageCodec(imageBytes);
+      return true;
+    } catch (e) {
+      debugPrint('MusicBrainz 이미지 디코딩 실패: $e');
+      return false;
+    } finally {
+      codec?.dispose();
+    }
+  }
+
   //endregion
 }

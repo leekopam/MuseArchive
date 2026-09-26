@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -9,12 +10,42 @@ import '../models/album.dart';
 import '../models/track.dart';
 import '../models/value_objects/release_date.dart';
 
+typedef DiscogsTokenProvider = Future<String?> Function();
+typedef DiscogsHttpGet =
+    Future<http.Response> Function(Uri uri, {Map<String, String>? headers});
+
+/// Discogs 요청 실패를 UI 계층까지 전달하기 위한 예외
+class DiscogsServiceException implements Exception {
+  const DiscogsServiceException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// Discogs API 서비스
 class DiscogsService {
   // region 싱글톤 패턴
   static final DiscogsService _instance = DiscogsService._internal();
   factory DiscogsService() => _instance;
-  DiscogsService._internal();
+  DiscogsService._internal()
+    : _tokenProvider = _readApiTokenFromPreferences,
+      _get = http.get,
+      _imageGet = http.get;
+
+  @visibleForTesting
+  DiscogsService.forTesting({
+    DiscogsTokenProvider? tokenProvider,
+    DiscogsHttpGet? get,
+    DiscogsHttpGet? imageGet,
+  }) : _tokenProvider = tokenProvider ?? _readApiTokenFromPreferences,
+       _get = get ?? http.get,
+       _imageGet = imageGet ?? http.get;
+
+  final DiscogsTokenProvider _tokenProvider;
+  final DiscogsHttpGet _get;
+  final DiscogsHttpGet _imageGet;
   //endregion
 
   // endregion
@@ -27,19 +58,21 @@ class DiscogsService {
   // endregion
 
   // region 인증 및 HTTP 요청
-  Future<String?> _getApiToken() async {
+  static Future<String?> _readApiTokenFromPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_tokenKey);
   }
 
-  Future<http.Response?> _authenticatedGet(
+  Future<http.Response> _authenticatedGet(
     String endpoint, {
     Map<String, String>? queryParams,
   }) async {
-    final token = await _getApiToken();
+    final token = (await _tokenProvider())?.trim();
     if (token == null || token.isEmpty) {
       debugPrint("오류: Discogs API 토큰이 설정되지 않았습니다.");
-      return null;
+      throw const DiscogsServiceException(
+        'Discogs API 토큰이 설정되지 않았습니다. 설정에서 토큰을 입력해주세요.',
+      );
     }
 
     final uri = Uri.parse(
@@ -51,13 +84,31 @@ class DiscogsService {
       'Authorization': 'Discogs token=$token',
     };
 
-    return await http.get(uri, headers: headers);
+    final response = await _get(uri, headers: headers);
+    if (response.statusCode == 200) {
+      return response;
+    }
+
+    throw DiscogsServiceException(_messageForStatusCode(response.statusCode));
+  }
+
+  static String _messageForStatusCode(int statusCode) {
+    if (statusCode == 401 || statusCode == 403) {
+      return 'Discogs 인증에 실패했습니다. 설정의 토큰을 확인해주세요.';
+    }
+    if (statusCode == 429) {
+      return 'Discogs 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
+    }
+    if (statusCode >= 500) {
+      return 'Discogs 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+    }
+    return 'Discogs 요청에 실패했습니다. 상태 코드: $statusCode';
   }
 
   Future<bool> testConnection() async {
     try {
       final response = await _authenticatedGet('/oauth/identity');
-      return response != null && response.statusCode == 200;
+      return response.statusCode == 200;
     } catch (e) {
       debugPrint("Discogs 연결 테스트 실패: $e");
       return false;
@@ -94,28 +145,29 @@ class DiscogsService {
         queryParams: queryParams,
       );
 
-      if (response != null && response.statusCode == 200) {
-        final searchData = jsonDecode(response.body);
-        final results = searchData['results'] as List;
+      final searchData = jsonDecode(response.body) as Map<String, dynamic>;
+      final results = (searchData['results'] as List?) ?? const [];
 
-        return results
-            .map(
-              (result) => {
-                'id': result['id'],
-                'title': result['title'] ?? '',
-                'artist': result['artist'] ?? '',
-                'year': result['year']?.toString() ?? '',
-                'thumb': result['thumb'] ?? '',
-                'format': (result['format'] as List?)?.join(', ') ?? '',
-              },
-            )
-            .toList();
-      }
+      return results
+          .map(
+            (result) => {
+              'id': result['id'],
+              'title': result['title'] ?? '',
+              'artist': result['artist'] ?? '',
+              'year': result['year']?.toString() ?? '',
+              'thumb': result['thumb'] ?? '',
+              'format': (result['format'] as List?)?.join(', ') ?? '',
+            },
+          )
+          .toList();
+    } on DiscogsServiceException {
+      rethrow;
     } catch (e) {
       debugPrint("Discogs 검색 오류: $e");
+      throw const DiscogsServiceException(
+        'Discogs 검색 응답을 처리할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
     }
-
-    return [];
   }
 
   Future<Album?> fetchAlbumByBarcode(String barcode) async {
@@ -125,33 +177,36 @@ class DiscogsService {
         queryParams: {'barcode': barcode, 'type': 'release'},
       );
 
-      if (response != null && response.statusCode == 200) {
-        final searchData = jsonDecode(response.body);
-        final results = searchData['results'] as List;
+      final searchData = jsonDecode(response.body) as Map<String, dynamic>;
+      final results = (searchData['results'] as List?) ?? const [];
 
-        if (results.isNotEmpty) {
-          final releaseId = results[0]['id'];
-          final rawData = await _fetchRawAlbumDetails(releaseId);
+      if (results.isNotEmpty) {
+        final releaseId = results[0]['id'];
+        final rawData = await _fetchRawAlbumDetails(releaseId);
 
-          if (rawData != null) {
-            String? localImagePath;
-            if (rawData['images'] != null &&
-                (rawData['images'] as List).isNotEmpty) {
-              final imageUrl = rawData['images'][0]['resource_url'];
-              if (imageUrl != null) {
-                localImagePath = await downloadAndSaveImage(
-                  imageUrl,
-                  releaseId.toString(),
-                );
-              }
+        if (rawData != null) {
+          String? localImagePath;
+          if (rawData['images'] != null &&
+              (rawData['images'] as List).isNotEmpty) {
+            final imageUrl = rawData['images'][0]['resource_url'];
+            if (imageUrl != null) {
+              localImagePath = await downloadAndSaveImage(
+                imageUrl,
+                releaseId.toString(),
+              );
             }
-
-            return _createAlbumFromRawData(rawData, localImagePath);
           }
+
+          return _createAlbumFromRawData(rawData, localImagePath);
         }
       }
+    } on DiscogsServiceException {
+      rethrow;
     } catch (e) {
       debugPrint("Discogs 검색 오류: $e");
+      throw const DiscogsServiceException(
+        'Discogs 바코드 검색 중 오류가 발생했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
     }
 
     return null;
@@ -178,8 +233,13 @@ class DiscogsService {
         }
         return _createAlbumFromRawData(rawData, localImagePath);
       }
+    } on DiscogsServiceException {
+      rethrow;
     } catch (e) {
       debugPrint("Discogs ID 검색 오류: $e");
+      throw const DiscogsServiceException(
+        'Discogs 앨범 정보를 불러오는 중 오류가 발생했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
     }
 
     return null;
@@ -189,14 +249,15 @@ class DiscogsService {
     try {
       final response = await _authenticatedGet('/releases/$releaseId');
 
-      if (response != null && response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } on DiscogsServiceException {
+      rethrow;
     } catch (e) {
       debugPrint("상세 정보 요청 실패: $e");
+      throw const DiscogsServiceException(
+        'Discogs 상세 정보를 처리할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
     }
-
-    return null;
   }
   //endregion
 
@@ -208,17 +269,23 @@ class DiscogsService {
     String fileNameBase,
   ) async {
     try {
-      final response = await http.get(
+      final response = await _imageGet(
         Uri.parse(imageUrl),
         headers: {'User-Agent': 'MuseArchiveApp/1.0'},
       );
 
       if (response.statusCode == 200) {
+        if (!await _isDecodableImage(response.bodyBytes)) {
+          debugPrint('이미지 다운로드 실패: 디코딩할 수 없는 이미지 데이터');
+          return null;
+        }
+
         final directory = await getTemporaryDirectory();
-        final extension = path.extension(imageUrl);
+        final extension = path.extension(imageUrl).split('?').first;
+        final ext = extension.isEmpty ? '.jpg' : extension;
         final localPath = path.join(
           directory.path,
-          'discogs_$fileNameBase$extension',
+          'discogs_$fileNameBase$ext',
         );
         final imageFile = File(localPath);
         await imageFile.writeAsBytes(response.bodyBytes);
@@ -229,6 +296,23 @@ class DiscogsService {
     }
 
     return null;
+  }
+
+  Future<bool> _isDecodableImage(Uint8List imageBytes) async {
+    if (imageBytes.isEmpty) {
+      return false;
+    }
+
+    ui.Codec? codec;
+    try {
+      codec = await ui.instantiateImageCodec(imageBytes);
+      return true;
+    } catch (e) {
+      debugPrint('이미지 디코딩 실패: $e');
+      return false;
+    } finally {
+      codec?.dispose();
+    }
   }
   //endregion
 

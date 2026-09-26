@@ -87,9 +87,9 @@ class _AddScreenState extends State<AddScreen> {
     });
   }
 
-  Future<void> _saveIfNeeded() async {
+  Future<bool> _saveIfNeeded() async {
     if (!mounted) {
-      return;
+      return false;
     }
 
     final title = _controllers.title.text.trim();
@@ -97,7 +97,12 @@ class _AddScreenState extends State<AddScreen> {
 
     // 제목과 아티스트 필수
     if (title.isEmpty || artist.isEmpty) {
-      return;
+      return true;
+    }
+
+    if (_controllers.parsedArtists.isEmpty) {
+      ErrorSnackBar.show(context, '아티스트 이름을 입력해주세요.');
+      return true;
     }
 
     _controllers.commitChanges(_viewModel);
@@ -108,6 +113,10 @@ class _AddScreenState extends State<AddScreen> {
 
     await _viewModel.saveAlbum(_albumId);
 
+    if (_viewModel.errorMessage != null) {
+      return false;
+    }
+
     // 첫 저장 후 ID 업데이트
     if (_albumId == null && _viewModel.currentAlbum != null) {
       if (mounted) {
@@ -117,6 +126,8 @@ class _AddScreenState extends State<AddScreen> {
       }
       // print("DEBUG: Album created...");
     }
+
+    return true;
   }
 
   @override
@@ -138,13 +149,15 @@ class _AddScreenState extends State<AddScreen> {
 
         // 제목이 있고 실제 변경사항이 있는 경우에만 저장 시도 (오류 방지)
         final navigator = Navigator.of(context);
-        await _saveIfNeeded();
+        final shouldPop = await _saveIfNeeded();
 
         if (!mounted) {
           return;
         }
 
-        navigator.pop();
+        if (shouldPop) {
+          navigator.pop();
+        }
       },
       child: Consumer<AlbumFormViewModel>(
         builder: (context, viewModel, child) {
@@ -564,8 +577,14 @@ class _AddScreenState extends State<AddScreen> {
             artist: artist,
             title: title,
           );
-          if (mounted) {
-            _showSearchResultsDialog(viewModel, searchResults);
+          if (context.mounted) {
+            final errorMessage = viewModel.errorMessage;
+            if (errorMessage != null) {
+              ErrorSnackBar.show(context, errorMessage);
+              viewModel.clearError();
+            } else {
+              _showSearchResultsDialog(viewModel, searchResults);
+            }
           }
         }
       }
@@ -793,8 +812,14 @@ class _AddScreenState extends State<AddScreen> {
 
         if (query.isNotEmpty) {
           final searchResults = await viewModel.searchVocadb(query);
-          if (mounted) {
-            _showVocadbSearchResultsDialog(viewModel, searchResults);
+          if (context.mounted) {
+            final errorMessage = viewModel.errorMessage;
+            if (errorMessage != null) {
+              ErrorSnackBar.show(context, errorMessage);
+              viewModel.clearError();
+            } else {
+              _showVocadbSearchResultsDialog(viewModel, searchResults);
+            }
           }
         }
       }
@@ -835,7 +860,7 @@ class _AddScreenState extends State<AddScreen> {
             height: MediaQuery.of(context).size.height * 0.7,
             child: ListView.builder(
               itemCount: results.length,
-              itemBuilder: (context, index) {
+              itemBuilder: (_, index) {
                 final result = results[index];
                 final imageUrl = result['thumb'] as String?;
                 final title = result['title'] ?? '제목 없음';
@@ -849,6 +874,20 @@ class _AddScreenState extends State<AddScreen> {
                     if (releaseId != null) {
                       Navigator.pop(dialogContext);
                       await viewModel.loadVocadbAlbumById(releaseId);
+                      if (!mounted) {
+                        return;
+                      }
+                      final errorMessage = viewModel.errorMessage;
+                      if (errorMessage != null) {
+                        ErrorSnackBar.show(context, errorMessage);
+                        viewModel.clearError();
+                        return;
+                      }
+                      final imageWarning = viewModel.vocadbImageWarningMessage;
+                      if (imageWarning != null) {
+                        InfoSnackBar.show(context, imageWarning);
+                        viewModel.clearVocadbImageWarning();
+                      }
                       _onFieldChanged();
                     }
                   },
@@ -1034,10 +1073,10 @@ class _AddScreenState extends State<AddScreen> {
             return;
           }
 
-          if (viewModel.errorMessage != null) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(viewModel.errorMessage!)));
+          final errorMessage = viewModel.errorMessage;
+          if (errorMessage != null) {
+            ErrorSnackBar.show(context, errorMessage);
+            viewModel.clearError();
           } else {
             _showMusicBrainzSearchResultsDialog(viewModel, searchResults);
           }
@@ -1083,7 +1122,7 @@ class _AddScreenState extends State<AddScreen> {
             height: MediaQuery.of(context).size.height * 0.7,
             child: ListView.builder(
               itemCount: results.length,
-              itemBuilder: (context, index) {
+              itemBuilder: (_, index) {
                 final result = results[index];
                 final title = result['title'] ?? '제목 없음';
                 final artist = result['artist'] ?? '아티스트 없음';
@@ -1095,6 +1134,15 @@ class _AddScreenState extends State<AddScreen> {
                     if (releaseId != null) {
                       Navigator.pop(dialogContext);
                       await viewModel.loadMusicBrainzAlbumById(releaseId);
+                      if (!mounted) {
+                        return;
+                      }
+                      final errorMessage = viewModel.errorMessage;
+                      if (errorMessage != null) {
+                        ErrorSnackBar.show(context, errorMessage);
+                        viewModel.clearError();
+                        return;
+                      }
                       _onFieldChanged();
                     }
                   },
@@ -1217,7 +1265,13 @@ class _AddScreenState extends State<AddScreen> {
       if (query != null && query.isNotEmpty && mounted) {
         final results = await viewModel.searchSpotifyForConnect(query);
         if (mounted) {
-          _showSpotifyResultsDialog(viewModel, results);
+          final errorMessage = viewModel.errorMessage;
+          if (errorMessage != null) {
+            ErrorSnackBar.show(context, errorMessage);
+            viewModel.clearError();
+          } else {
+            _showSpotifyResultsDialog(viewModel, results);
+          }
         }
       }
     } finally {
@@ -1504,7 +1558,13 @@ class _AddScreenState extends State<AddScreen> {
       if (query != null && query.isNotEmpty && mounted) {
         final results = await viewModel.searchSpotifyForConnect(query);
         if (mounted) {
-          _showSpotifyLinkResultsDialog(viewModel, results);
+          final errorMessage = viewModel.errorMessage;
+          if (errorMessage != null) {
+            ErrorSnackBar.show(context, errorMessage);
+            viewModel.clearError();
+          } else {
+            _showSpotifyLinkResultsDialog(viewModel, results);
+          }
         }
       }
     } finally {
@@ -1841,6 +1901,8 @@ class _FormControllers {
   final style = TextEditingController();
   final catalogNumber = TextEditingController();
 
+  List<String> get parsedArtists => _splitCommaSeparated(artist.text);
+
   void setupInitial(AlbumFormViewModel viewModel) {
     update(viewModel);
   }
@@ -1903,11 +1965,7 @@ class _FormControllers {
       album.copyWith(
         title: title.text,
         titleKr: titleKr.text,
-        artists: artist.text
-            .split(',')
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList(),
+        artists: parsedArtists,
         catalogNumber: catalogNumber.text.trim().isNotEmpty
             ? catalogNumber.text.trim()
             : null,
@@ -1943,6 +2001,9 @@ class _FormControllers {
       controller.text = text;
     }
   }
+
+  List<String> _splitCommaSeparated(String text) =>
+      text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
   void dispose() {
     title.dispose();
