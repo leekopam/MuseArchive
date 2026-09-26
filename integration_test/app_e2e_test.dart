@@ -7,6 +7,7 @@ import 'package:my_album_app/main.dart' as app;
 import 'package:my_album_app/models/album.dart';
 import 'package:my_album_app/screens/home_screen.dart';
 import 'package:my_album_app/services/i_album_repository.dart';
+import 'package:my_album_app/widgets/animation_widgets.dart';
 
 // 실기 L3: 앱 기동 → 시드 앨범 표시 → 상세 진입 → 삭제까지의 사용자 흐름.
 // 실제 Hive 저장소와 실제 화면 탐색을 사용한다.
@@ -36,27 +37,25 @@ void main() {
     final repository = context.read<IAlbumRepository>();
     await repository.delete(seedId); // 이전 실패 잔재 정리
     await repository.add(
-      Album(
-        id: seedId,
-        title: seedTitle,
-        artists: const ['E2E Artist'],
-      ),
+      Album(id: seedId, title: seedTitle, artists: const ['E2E Artist']),
     );
     await settle(tester);
 
-    expect(find.byKey(const ValueKey(seedId)), findsOneWidget);
+    // 일반 그리드의 앨범 카드는 별도 키를 갖지 않으므로 제목 기준으로 찾는다
     expect(find.text(seedTitle), findsWidgets);
+    final seedCard = find.widgetWithText(TapScaleWrapper, seedTitle);
+    expect(seedCard, findsOneWidget);
 
     // 카드 롱프레스 → 삭제 → 확인 다이얼로그
-    await tester.longPress(find.byKey(const ValueKey(seedId)));
+    await tester.longPress(seedCard);
     await settle(tester);
     await tester.tap(find.text('앨범 삭제'));
     await settle(tester);
-    await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+    await tester.tap(find.widgetWithText(TextButton, '삭제'));
     await settle(tester);
 
     final albums = await repository.getAll();
     expect(albums.any((a) => a.id == seedId), isFalse);
-    expect(find.byKey(const ValueKey(seedId)), findsNothing);
+    expect(find.text(seedTitle), findsNothing);
   });
 }
