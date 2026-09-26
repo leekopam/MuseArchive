@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../services/album_repository.dart';
 import '../services/discogs_service.dart';
+import '../services/haptic_service.dart';
+import '../services/i_album_repository.dart';
 import '../services/spotify_service.dart';
 import '../services/theme_manager.dart';
 import '../services/update_service.dart';
@@ -22,12 +24,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _spotifyClientSecretController =
       TextEditingController();
 
-  final AlbumRepository _repository = AlbumRepository();
-  final UpdateService _updateService = UpdateService();
   bool _isLoading = false;
   bool _isDarkMode = false;
   String _currentVersion = '1.0.0';
-
+ 
   // region 라이프사이클
   @override
   void initState() {
@@ -48,6 +48,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // endregion
 
   // region 기능 메서드
+  IAlbumRepository get _repository => context.read<IAlbumRepository>();
+
+  SpotifyService get _spotifyService => context.read<SpotifyService>();
+
+  DiscogsService get _discogsService => context.read<DiscogsService>();
+
+  UpdateService get _updateService => context.read<UpdateService>();
+
   void _onThemeChanged() {
     if (mounted) {
       setState(() {
@@ -57,15 +65,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _toggleDarkMode(bool value) {
+    HapticService.toggle();
     saveTheme(value);
   }
 
   Future<void> _loadCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     final discogsToken = prefs.getString('discogs_api_token') ?? '';
-    final spotifyId = prefs.getString('spotify_client_id') ?? '';
-    final spotifySecret = prefs.getString('spotify_client_secret') ?? '';
-    final version = await _updateService.getCurrentVersion();
+    final spotifyId = prefs.getString(SpotifyService.clientIdPrefsKey) ?? '';
+    final spotifySecret =
+        prefs.getString(SpotifyService.clientSecretPrefsKey) ?? '';
+    final version = await _updateService.getEffectiveCurrentVersion();
+
+    if (!mounted) return;
 
     setState(() {
       _apiTokenController.text = discogsToken;
@@ -76,6 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _checkForUpdates() async {
+    HapticService.lightTap();
     setState(() => _isLoading = true);
     try {
       final updateInfo = await _updateService.checkForUpdate();
@@ -89,7 +102,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) ErrorSnackBar.show(context, '업데이트 확인 실패: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -98,12 +113,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return _UpdateDialog(info: info, updateService: _updateService);
+        return _UpdateDialog(
+          info: info,
+          updateService: _updateService,
+          onInstallComplete: (version) {
+            if (mounted) setState(() => _currentVersion = version);
+          },
+        );
       },
     );
   }
 
   Future<void> _saveApiToken() async {
+    HapticService.lightTap();
     setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -116,20 +138,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ErrorSnackBar.show(context, '저장 실패: $e');
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _saveSpotifyCredentials() async {
+    HapticService.lightTap();
     setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
-        'spotify_client_id',
+        SpotifyService.clientIdPrefsKey,
         _spotifyClientIdController.text,
       );
       await prefs.setString(
-        'spotify_client_secret',
+        SpotifyService.clientSecretPrefsKey,
         _spotifyClientSecretController.text,
       );
       if (mounted) {
@@ -140,11 +165,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ErrorSnackBar.show(context, '저장 실패: $e');
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _testDiscogsConnection() async {
+    HapticService.lightTap();
     setState(() => _isLoading = true);
     try {
       // 테스트 전 현재 입력값으로 설정 업데이트
@@ -152,7 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('discogs_api_token', _apiTokenController.text);
 
-      final success = await DiscogsService().testConnection();
+      final success = await _discogsService.testConnection();
       if (mounted) {
         if (success) {
           SuccessSnackBar.show(context, 'Discogs 연결 성공!');
@@ -163,24 +191,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) ErrorSnackBar.show(context, '테스트 오류: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _testSpotifyConnection() async {
+    HapticService.lightTap();
     setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
-        'spotify_client_id',
+        SpotifyService.clientIdPrefsKey,
         _spotifyClientIdController.text,
       );
       await prefs.setString(
-        'spotify_client_secret',
+        SpotifyService.clientSecretPrefsKey,
         _spotifyClientSecretController.text,
       );
 
-      final success = await SpotifyService().testConnection();
+      final success = await _spotifyService.testConnection();
       if (mounted) {
         if (success) {
           SuccessSnackBar.show(context, 'Spotify 연결 성공!');
@@ -191,11 +222,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) ErrorSnackBar.show(context, '테스트 오류: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _createBackup() async {
+    HapticService.lightTap();
     setState(() => _isLoading = true);
     try {
       final success = await _repository.saveBackupToDevice();
@@ -211,11 +245,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ErrorSnackBar.show(context, '백업 생성 중 오류: $e');
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _shareBackup() async {
+    HapticService.lightTap();
+    setState(() => _isLoading = true);
+    try {
+      final success = await _repository.shareBackup();
+      if (mounted) {
+        if (success) {
+          SuccessSnackBar.show(context, '백업 공유가 시작되었습니다.');
+        } else {
+          ErrorSnackBar.show(context, '백업 공유에 실패했습니다.');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ErrorSnackBar.show(context, '백업 공유 중 오류: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _restoreBackup() async {
+    HapticService.lightTap();
     final confirm = await ConfirmDialog.show(
       context,
       title: '백업 복원',
@@ -240,7 +300,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ErrorSnackBar.show(context, '백업 복원 중 오류: $e');
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
   // endregion
@@ -493,6 +555,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const Divider(height: 1),
                   ListTile(
+                    leading: const Icon(Icons.share, color: Colors.orange),
+                    title: Text('백업 공유', style: TextStyle(color: textColor)),
+                    subtitle: Text(
+                      '백업 파일을 다른 앱으로 공유합니다.',
+                      style: TextStyle(color: subTextColor),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _shareBackup,
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
                     leading: const Icon(Icons.restore, color: Colors.green),
                     title: Text('백업 복원', style: TextStyle(color: textColor)),
                     subtitle: Text(
@@ -576,8 +649,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 class _UpdateDialog extends StatefulWidget {
   final UpdateInfo info;
   final UpdateService updateService;
+  final void Function(String version)? onInstallComplete;
 
-  const _UpdateDialog({required this.info, required this.updateService});
+  const _UpdateDialog({
+    required this.info,
+    required this.updateService,
+    this.onInstallComplete,
+  });
 
   @override
   State<_UpdateDialog> createState() => _UpdateDialogState();
@@ -585,6 +663,7 @@ class _UpdateDialog extends StatefulWidget {
 
 class _UpdateDialogState extends State<_UpdateDialog> {
   bool _isDownloading = false;
+  bool _installComplete = false;
   double _progress = 0.0;
   String? _error;
 
@@ -602,7 +681,17 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           if (mounted) setState(() => _progress = progress);
         },
       );
-      if (mounted) Navigator.pop(context);
+      // 설치 트리거 성공 시 버전 기록
+      await widget.updateService.saveInstalledVersion(
+        widget.info.latestVersion,
+      );
+      widget.onInstallComplete?.call(widget.info.latestVersion);
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _installComplete = true;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -623,11 +712,21 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       title: Row(
         children: [
           Icon(
-            _isDownloading ? Icons.downloading : Icons.system_update_alt,
-            color: Colors.blue,
+            _installComplete
+                ? Icons.check_circle
+                : _isDownloading
+                ? Icons.downloading
+                : Icons.system_update_alt,
+            color: _installComplete ? Colors.green : Colors.blue,
           ),
           const SizedBox(width: 12),
-          Text(_isDownloading ? '다운로드 중...' : '새로운 버전 업데이트'),
+          Text(
+            _installComplete
+                ? '설치 완료'
+                : _isDownloading
+                ? '다운로드 중...'
+                : '새로운 버전 업데이트',
+          ),
         ],
       ),
       content: Column(
@@ -638,7 +737,14 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             '새로운 버전 v${widget.info.latestVersion}이 준비되었습니다.',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          if (!_isDownloading) ...[
+          if (_installComplete) ...[
+            const SizedBox(height: 16),
+            const Text(
+              '업데이트가 설치되었습니다.\n앱을 재시작하면 새 버전이 적용됩니다.',
+              style: TextStyle(fontSize: 14),
+            ),
+          ],
+          if (!_isDownloading && !_installComplete) ...[
             const SizedBox(height: 12),
             const Text(
               '업데이트 내용:',

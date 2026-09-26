@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -8,21 +9,47 @@ import '../models/album.dart';
 import '../models/track.dart';
 import '../models/value_objects/release_date.dart';
 
+typedef VocadbHttpGet =
+    Future<http.Response> Function(Uri uri, {Map<String, String>? headers});
+
+/// VocaDB 요청 실패를 UI 계층까지 전달하기 위한 예외
+class VocadbServiceException implements Exception {
+  const VocadbServiceException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// VocaDB API 서비스
 class VocadbService {
   // region 싱글톤 패턴
   static final VocadbService _instance = VocadbService._internal();
   factory VocadbService() => _instance;
-  VocadbService._internal();
+  VocadbService._internal() : _httpGet = http.get, _imageHttpGet = http.get;
+
+  @visibleForTesting
+  VocadbService.forTesting({VocadbHttpGet? get, VocadbHttpGet? imageGet})
+    : _httpGet = get ?? http.get,
+      _imageHttpGet = imageGet ?? http.get;
+
+  final VocadbHttpGet _httpGet;
+  final VocadbHttpGet _imageHttpGet;
+  String? _lastImageDownloadWarning;
+
+  String? get lastImageDownloadWarning => _lastImageDownloadWarning;
   //endregion
 
   // region 상수
   static const String _baseUrl = 'https://vocadb.net/api';
   static const String _userAgent = 'MuseArchiveApp/1.0';
+  static const String _imageDownloadWarningMessage =
+      'VocaDB 앨범 정보는 불러왔지만 커버 이미지를 저장하지 못했습니다. 필요하면 이미지를 직접 선택해주세요.';
   //endregion
 
   // region API 요청 헬퍼
-  Future<http.Response?> _get(
+  Future<http.Response> _get(
     String endpoint, {
     Map<String, String>? queryParams,
   }) async {
@@ -32,11 +59,23 @@ class VocadbService {
     final headers = {'User-Agent': _userAgent};
 
     try {
-      return await http.get(uri, headers: headers);
+      return await _httpGet(uri, headers: headers);
     } catch (e) {
       debugPrint("VocaDB 연동 오류: $e");
-      return null;
+      throw const VocadbServiceException(
+        'VocaDB 요청 중 오류가 발생했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
     }
+  }
+
+  static String _messageForStatusCode(int statusCode) {
+    if (statusCode == 429) {
+      return 'VocaDB 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
+    }
+    if (statusCode >= 500) {
+      return 'VocaDB 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+    }
+    return 'VocaDB 요청에 실패했습니다. 상태 코드: $statusCode';
   }
   //endregion
 
@@ -55,11 +94,23 @@ class VocadbService {
         },
       );
 
-      if (response != null && response.statusCode == 200) {
-        final searchData = jsonDecode(response.body);
-        final items = searchData['items'] as List;
+      if (response.statusCode != 200) {
+        throw VocadbServiceException(
+          _messageForStatusCode(response.statusCode),
+        );
+      }
 
-        return items.map((item) {
+      final searchData = jsonDecode(response.body);
+      if (searchData is! Map<String, dynamic>) {
+        throw const FormatException('VocaDB 검색 응답 형식이 올바르지 않습니다.');
+      }
+      final rawItems = searchData['items'];
+      if (rawItems is! List) {
+        throw const FormatException('VocaDB 검색 결과 목록이 없습니다.');
+      }
+
+      return rawItems.map((item) {
+        if (item is Map<String, dynamic>) {
           final id = item['id'];
           final title = item['name'] ?? '';
           final artist = item['artistString'] ?? '';
@@ -88,18 +139,24 @@ class VocadbService {
                 item['discType'] ??
                 '', // VocaDB discType (e.g. Album, Single, EP)
           };
-        }).toList();
-      }
+        }
+        throw const FormatException('VocaDB 검색 항목 형식이 올바르지 않습니다.');
+      }).toList();
+    } on VocadbServiceException {
+      rethrow;
     } catch (e) {
       debugPrint("VocaDB 검색 오류: $e");
+      throw const VocadbServiceException(
+        'VocaDB 검색 응답을 처리할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
     }
-
-    return [];
   }
   //endregion
 
   // region 앨범 상세 조회
   Future<Album?> fetchAlbumById(int id) async {
+    _lastImageDownloadWarning = null;
+
     try {
       final response = await _get(
         '/albums/$id',
@@ -109,23 +166,39 @@ class VocadbService {
         },
       );
 
-      if (response != null && response.statusCode == 200) {
-        final rawData = jsonDecode(response.body) as Map<String, dynamic>;
-
-        String? localImagePath;
-        if (rawData['mainPicture'] != null &&
-            rawData['mainPicture']['urlOriginal'] != null) {
-          final imageUrl = rawData['mainPicture']['urlOriginal'];
-          localImagePath = await downloadAndSaveImage(imageUrl, id.toString());
-        }
-
-        return _createAlbumFromRawData(rawData, localImagePath, id);
+      if (response.statusCode == 404) {
+        return null;
       }
+      if (response.statusCode != 200) {
+        throw VocadbServiceException(
+          _messageForStatusCode(response.statusCode),
+        );
+      }
+
+      final rawData = jsonDecode(response.body);
+      if (rawData is! Map<String, dynamic>) {
+        throw const FormatException('VocaDB 앨범 응답 형식이 올바르지 않습니다.');
+      }
+
+      String? localImagePath;
+      final mainPicture = rawData['mainPicture'];
+      final imageUrl = mainPicture is Map ? mainPicture['urlOriginal'] : null;
+      if (imageUrl is String && imageUrl.trim().isNotEmpty) {
+        localImagePath = await downloadAndSaveImage(imageUrl, id.toString());
+        if (localImagePath == null) {
+          _lastImageDownloadWarning = _imageDownloadWarningMessage;
+        }
+      }
+
+      return _createAlbumFromRawData(rawData, localImagePath, id);
+    } on VocadbServiceException {
+      rethrow;
     } catch (e) {
       debugPrint("VocaDB ID 검색 오류: $e");
+      throw const VocadbServiceException(
+        'VocaDB 앨범 응답을 처리할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.',
+      );
     }
-
-    return null;
   }
   //endregion
 
@@ -309,12 +382,17 @@ class VocadbService {
     String fileNameBase,
   ) async {
     try {
-      final response = await http.get(
+      final response = await _imageHttpGet(
         Uri.parse(imageUrl),
         headers: {'User-Agent': _userAgent},
       );
 
       if (response.statusCode == 200) {
+        if (!await _isDecodableImage(response.bodyBytes)) {
+          debugPrint('VocaDB 이미지 다운로드 실패: 디코딩할 수 없는 이미지 데이터');
+          return null;
+        }
+
         final directory = await getTemporaryDirectory();
         final extension = path
             .extension(imageUrl)
@@ -326,11 +404,29 @@ class VocadbService {
         await imageFile.writeAsBytes(response.bodyBytes);
         return localPath;
       }
+      debugPrint('VocaDB 이미지 다운로드 실패: HTTP ${response.statusCode}');
     } catch (e) {
       debugPrint("VocaDB 이미지 다운로드 실패: $e");
     }
 
     return null;
+  }
+
+  Future<bool> _isDecodableImage(Uint8List imageBytes) async {
+    if (imageBytes.isEmpty) {
+      return false;
+    }
+
+    ui.Codec? codec;
+    try {
+      codec = await ui.instantiateImageCodec(imageBytes);
+      return true;
+    } catch (e) {
+      debugPrint('VocaDB 이미지 디코딩 실패: $e');
+      return false;
+    } finally {
+      codec?.dispose();
+    }
   }
 
   //endregion

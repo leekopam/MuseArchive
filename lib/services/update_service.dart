@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 업데이트 정보 모델
 class UpdateInfo {
@@ -22,11 +23,30 @@ class UpdateInfo {
 class UpdateService {
   static const String _owner = 'leekopam';
   static const String _repo = 'MuseArchive';
+  static const String _lastInstalledVersionKey = 'last_installed_version';
 
   /// 현재 앱 버전 조회
   Future<String> getCurrentVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
     return packageInfo.version;
+  }
+
+  /// 유효 현재 버전 조회 (PackageInfo vs 저장된 설치 버전 중 높은 것)
+  Future<String> getEffectiveCurrentVersion() async {
+    final packageVersion = await getCurrentVersion();
+    final prefs = await SharedPreferences.getInstance();
+    final savedVersion = prefs.getString(_lastInstalledVersionKey);
+
+    if (savedVersion != null && _isNewerVersion(packageVersion, savedVersion)) {
+      return savedVersion;
+    }
+    return packageVersion;
+  }
+
+  /// 업데이트 설치 완료 버전 기록
+  Future<void> saveInstalledVersion(String version) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastInstalledVersionKey, version);
   }
 
   /// GitHub 최신 릴리스 확인 후 업데이트 정보 반환
@@ -47,7 +67,7 @@ class UpdateService {
             ? latestTag.substring(1)
             : latestTag;
 
-        final currentVersion = await getCurrentVersion();
+        final currentVersion = await getEffectiveCurrentVersion();
 
         if (_isNewerVersion(currentVersion, latestVersion)) {
           // assets에서 .apk 파일 URL 탐색

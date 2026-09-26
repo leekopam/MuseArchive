@@ -43,3 +43,46 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local scratch and investigation artifacts
+/temp_*.dart
+/temp_*.json
+/test_fetch.dart
+/test_parsing*.dart
+/vocadb_sample*.json
+/analyze_output*.txt
+/testsprite*.tar
+
+# 전역 gitignore의 docs/ ignore를 상쇄해 docs/ 하위 비마크다운 추적 산출물 유지
+# (*.md 문서는 아래 규칙으로 계속 로컬 전용)
+!/docs/
+
+# AI agent instructions and workflow docs — 로컬 전용, GitHub 비업로드
+AGENTS*.md
+/docs/Role/
+/docs/SKILL/
+/docs/Machine_Spirit/
+
+# Generated QA and local IDE artifacts
+/artifacts/
+/tools/
+*.md
+/docs/qa/testsprite/tmp/
+/docs/qa/testsprite/cache/
+/docs/qa/testsprite/artifacts/
+/android/.kotlin/
+/android/key.properties
+/android/*.jks
+/android/*.keystore
+/android/**/*.jks
+/android/**/*.keystore
+/test/.idea/
+
+# AI agent local runtime state
+/.hermes/
+/.claude/
+/.agents/
+/.codex/
+/.opencode/
+/.cursor/
+/.windsurf/
