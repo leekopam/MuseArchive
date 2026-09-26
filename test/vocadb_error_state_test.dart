@@ -15,6 +15,8 @@ import 'package:my_album_app/services/spotify_service.dart';
 import 'package:my_album_app/services/vocadb_service.dart';
 import 'package:my_album_app/viewmodels/album_form_viewmodel.dart';
 
+import 'fakes.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -196,7 +198,7 @@ void main() {
       addTearDown(() {
         PathProviderPlatform.instance = originalPathProvider;
       });
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         throwOnTemporaryPath: true,
       );
       final viewModel = _buildViewModel(
@@ -258,7 +260,7 @@ void main() {
           await sandbox.delete(recursive: true);
         }
       });
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: sandbox.path,
       );
       final viewModel = _buildViewModel(
@@ -298,7 +300,7 @@ void main() {
           await sandbox.delete(recursive: true);
         }
       });
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: sandbox.path,
       );
       final viewModel = _buildViewModel(
@@ -450,20 +452,3 @@ class _FakeAlbumRepository implements IAlbumRepository {
   Future<bool> importBackup() async => false;
 }
 
-class _FakePathProviderPlatform extends PathProviderPlatform {
-  _FakePathProviderPlatform({
-    this.temporaryPath,
-    this.throwOnTemporaryPath = false,
-  });
-
-  final String? temporaryPath;
-  final bool throwOnTemporaryPath;
-
-  @override
-  Future<String?> getTemporaryPath() async {
-    if (throwOnTemporaryPath) {
-      throw Exception('temporary path lookup failed');
-    }
-    return temporaryPath;
-  }
-}

@@ -11,6 +11,7 @@ import 'package:my_album_app/models/track.dart';
 import 'package:my_album_app/services/album_repository.dart';
 
 import 'boogle_hook.dart';
+import 'fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -81,7 +82,7 @@ void main() {
     test('S05 커버 이미지가 문서 폴더로 복사되고 경로가 재기록된다', () async {
       final docsDir = Directory(path.join(sandbox.path, 'docs'));
       await docsDir.create(recursive: true);
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         applicationDocumentsPath: docsDir.path,
       );
 
@@ -242,12 +243,3 @@ bool _sameAlbumSet(List<Album> before, List<Album> after) {
   return after.every((album) => beforeSet.contains(normalize(album)));
 }
 
-class _FakePathProviderPlatform extends PathProviderPlatform {
-  _FakePathProviderPlatform({this.applicationDocumentsPath});
-
-  final String? applicationDocumentsPath;
-
-  @override
-  Future<String?> getApplicationDocumentsPath() async =>
-      applicationDocumentsPath;
-}

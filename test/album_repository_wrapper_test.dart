@@ -9,6 +9,8 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:my_album_app/models/album.dart';
 import 'package:my_album_app/services/album_repository.dart';
 
+import 'fakes.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -57,7 +59,7 @@ void main() {
     test(
       'exportBackup returns null when temporary directory lookup fails',
       () async {
-        PathProviderPlatform.instance = _FakePathProviderPlatform(
+        PathProviderPlatform.instance = FakePathProviderPlatform(
           throwOnTemporaryPath: true,
         );
 
@@ -68,7 +70,7 @@ void main() {
     );
 
     test('importBackup returns false when file picker is cancelled', () async {
-      FilePicker.platform = _FakeFilePicker();
+      FilePicker.platform = FakeFilePicker();
 
       final result = await repository.importBackup();
 
@@ -76,7 +78,7 @@ void main() {
     });
 
     test('importBackup returns false when picked file has no path', () async {
-      FilePicker.platform = _FakeFilePicker(
+      FilePicker.platform = FakeFilePicker(
         result: FilePickerResult(<PlatformFile>[
           PlatformFile(name: 'backup.zip', size: 0),
         ]),
@@ -93,7 +95,7 @@ void main() {
         final zipPath = path.join(sandbox.path, 'backup.zip');
         await File(zipPath).writeAsBytes(<int>[1, 2, 3]);
 
-        FilePicker.platform = _FakeFilePicker(
+        FilePicker.platform = FakeFilePicker(
           result: FilePickerResult(<PlatformFile>[
             PlatformFile(
               name: 'backup.zip',
@@ -103,7 +105,7 @@ void main() {
           ]),
         );
 
-        PathProviderPlatform.instance = _FakePathProviderPlatform(
+        PathProviderPlatform.instance = FakePathProviderPlatform(
           temporaryPath: sandbox.path,
           throwOnApplicationDocumentsPath: true,
         );
@@ -122,7 +124,7 @@ void main() {
         final tempDir = Directory(path.join(sandbox.path, 'temp'));
         await tempDir.create(recursive: true);
 
-        PathProviderPlatform.instance = _FakePathProviderPlatform(
+        PathProviderPlatform.instance = FakePathProviderPlatform(
           temporaryPath: tempDir.path,
         );
 
@@ -135,7 +137,7 @@ void main() {
     );
 
     test('shareBackup returns false when backup export fails', () async {
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         throwOnTemporaryPath: true,
       );
 
@@ -149,7 +151,7 @@ void main() {
 
       final tempDir = Directory(path.join(sandbox.path, 'share-temp'));
       await tempDir.create(recursive: true);
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: tempDir.path,
       );
 
@@ -167,7 +169,7 @@ void main() {
 
       final tempDir = Directory(path.join(sandbox.path, 'share-success'));
       await tempDir.create(recursive: true);
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: tempDir.path,
       );
 
@@ -189,7 +191,7 @@ void main() {
 
       final tempDir = Directory(path.join(sandbox.path, 'save-failure'));
       await tempDir.create(recursive: true);
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: tempDir.path,
       );
 
@@ -209,7 +211,7 @@ void main() {
 
       final tempDir = Directory(path.join(sandbox.path, 'save-cancelled'));
       await tempDir.create(recursive: true);
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: tempDir.path,
       );
 
@@ -229,7 +231,7 @@ void main() {
 
       final tempDir = Directory(path.join(sandbox.path, 'save-success'));
       await tempDir.create(recursive: true);
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: tempDir.path,
       );
 
@@ -263,52 +265,4 @@ Future<void> _seedAlbumData() async {
   );
 }
 
-class _FakeFilePicker extends FilePicker {
-  _FakeFilePicker({this.result});
 
-  final FilePickerResult? result;
-
-  @override
-  Future<FilePickerResult?> pickFiles({
-    String? dialogTitle,
-    String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
-    Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = false,
-    int compressionQuality = 0,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-  }) async => result;
-}
-
-class _FakePathProviderPlatform extends PathProviderPlatform {
-  _FakePathProviderPlatform({
-    this.temporaryPath,
-    this.throwOnTemporaryPath = false,
-    this.throwOnApplicationDocumentsPath = false,
-  });
-
-  final String? temporaryPath;
-  final bool throwOnTemporaryPath;
-  final bool throwOnApplicationDocumentsPath;
-
-  @override
-  Future<String?> getTemporaryPath() async {
-    if (throwOnTemporaryPath) {
-      throw Exception('temporary path lookup failed');
-    }
-    return temporaryPath;
-  }
-
-  @override
-  Future<String?> getApplicationDocumentsPath() async {
-    if (throwOnApplicationDocumentsPath) {
-      throw Exception('application documents lookup failed');
-    }
-    return temporaryPath;
-  }
-}

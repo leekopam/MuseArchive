@@ -15,6 +15,8 @@ import 'package:my_album_app/services/spotify_service.dart';
 import 'package:my_album_app/services/vocadb_service.dart';
 import 'package:my_album_app/viewmodels/album_form_viewmodel.dart';
 
+import 'fakes.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -86,7 +88,7 @@ void main() {
           await sandbox.delete(recursive: true);
         }
       });
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: sandbox.path,
       );
       final service = DiscogsService.forTesting(
@@ -117,7 +119,7 @@ void main() {
           await sandbox.delete(recursive: true);
         }
       });
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: sandbox.path,
       );
       final service = DiscogsService.forTesting(
@@ -150,7 +152,7 @@ void main() {
           await sandbox.delete(recursive: true);
         }
       });
-      PathProviderPlatform.instance = _FakePathProviderPlatform(
+      PathProviderPlatform.instance = FakePathProviderPlatform(
         temporaryPath: sandbox.path,
       );
       final service = DiscogsService.forTesting(
@@ -230,15 +232,6 @@ Future<http.Response> _unexpectedDiscogsGet(
 final List<int> _validPngImageBytes = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
 );
-
-class _FakePathProviderPlatform extends PathProviderPlatform {
-  _FakePathProviderPlatform({required this.temporaryPath});
-
-  final String temporaryPath;
-
-  @override
-  Future<String?> getTemporaryPath() async => temporaryPath;
-}
 
 class _FakeAlbumRepository implements IAlbumRepository {
   final ValueNotifier<Object?> _listenable = ValueNotifier<Object?>(null);
