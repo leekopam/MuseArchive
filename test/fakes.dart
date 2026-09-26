@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 import 'package:my_album_app/models/album.dart';
@@ -10,11 +11,18 @@ import 'package:my_album_app/services/i_album_repository.dart';
 
 /// 인메모리 저장소. widget 테스트에서 실제 Hive IO를 제거해 fakeAsync와 충돌하지 않는다.
 class FakeAlbumRepository implements IAlbumRepository {
-  FakeAlbumRepository({List<Album>? albums, Map<String, List<String>>? aliases})
-    : albums = List.of(albums ?? const []),
-      _aliases = aliases ?? {};
+  FakeAlbumRepository({
+    List<Album>? albums,
+    List<Artist>? artists,
+    Map<String, List<String>>? aliases,
+  }) : albums = List.of(albums ?? const []),
+       _artists = {
+         for (final artist in artists ?? const <Artist>[]) artist.name: artist,
+       },
+       _aliases = aliases ?? {};
 
   final List<Album> albums;
+  final Map<String, Artist> _artists;
   final Map<String, List<String>> _aliases;
   final ValueNotifier<int> _notifier = ValueNotifier<int>(0);
 
@@ -75,20 +83,31 @@ class FakeAlbumRepository implements IAlbumRepository {
   List<String> getSmartArtistSuggestions(String query) => const [];
 
   @override
-  List<Artist> getAllArtists() => const [];
+  List<Artist> getAllArtists() => _artists.values.toList();
 
   @override
   List<Album> getAlbumsByArtist(String artistName) =>
       albums.where((a) => a.artists.contains(artistName)).toList();
 
   @override
-  Artist? getArtistByName(String artistName) => null;
+  Artist? getArtistByName(String artistName) => _artists[artistName];
 
   @override
   Future<void> updateArtistImage(
     String artistName,
     String? imagePath,
-  ) async {}
+  ) async {
+    final current = _artists[artistName];
+    _artists[artistName] = Artist(
+      id: current?.id,
+      name: artistName,
+      imagePath: imagePath,
+      albumIds: current?.albumIds,
+      aliases: current?.aliases,
+      groups: current?.groups,
+    );
+    _notify();
+  }
 
   @override
   Future<void> updateArtistMetadata(
@@ -97,6 +116,11 @@ class FakeAlbumRepository implements IAlbumRepository {
     List<String> groups,
   ) async {
     _aliases[artistName] = aliases;
+    final current = _artists[artistName];
+    _artists[artistName] = current == null
+        ? Artist(name: artistName, aliases: aliases, groups: groups)
+        : current.copyWith(aliases: aliases, groups: groups);
+    _notify();
   }
 
   @override
@@ -152,6 +176,19 @@ class FakePathProviderPlatform extends PathProviderPlatform {
     }
     return applicationDocumentsPath;
   }
+}
+
+/// image_picker 대체. `result`가 null이면 사용자 취소와 동일하다.
+class FakeImagePickerPlatform extends ImagePickerPlatform {
+  FakeImagePickerPlatform({this.result});
+
+  final XFile? result;
+
+  @override
+  Future<XFile?> getImageFromSource({
+    required ImageSource source,
+    ImagePickerOptions options = const ImagePickerOptions(),
+  }) async => result;
 }
 
 /// file_picker 대체. `result`가 null이면 사용자 취소와 동일하다.
