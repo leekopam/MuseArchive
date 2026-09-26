@@ -32,8 +32,13 @@ class BoogleHook {
     'single', 'mean', 'median', 'min', 'max', 'p95', 'sum',
   };
 
-  static String _lockPath() =>
-      '${File(_metricsPath!).parent.path}${Platform.pathSeparator}boogle-hook.lock';
+  // metric()은 metricsPath, artifact()는 artifactsPath/Dir가 이미 검증된 뒤 호출되므로
+  // 셋 중 하나가 반드시 존재한다. 부분 설정(artifact만 설정된 실행)에서도 크래시하지 않는다.
+  static String _lockPath() {
+    final anchor = _metricsPath ?? _artifactsPath ?? _artifactsDir;
+    assert(anchor != null, 'BOOGLE_* 환경 변수 없이 lock 경로를 요청했습니다');
+    return '${File(anchor!).parent.path}${Platform.pathSeparator}boogle-hook.lock';
+  }
 
   static Future<T> _withLock<T>(Future<T> Function() body) async {
     final lockFile = File(_lockPath());
