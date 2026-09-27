@@ -30,6 +30,11 @@ void main() {
   const seedId2 = 'e2e-seed-0002';
   const seedTitle = 'E2E Seed Album';
   const seedArtist = 'E2E Artist';
+  const nativePickerSeedId = 'e2e-native-picker-0001';
+  const nativePickerSeedTitle = 'E2E Native Picker Album';
+  const nativeFileDialogsEnabled = bool.fromEnvironment(
+    'E2E_NATIVE_FILE_DIALOGS',
+  );
 
   /// 무한 애니메이션(스켈레톤 등)이 있어도 30초 안에 실패로 종료한다
   Future<void> settle(WidgetTester tester) async {
@@ -38,6 +43,18 @@ void main() {
       EnginePhase.sendSemanticsUpdate,
       const Duration(seconds: 30),
     );
+  }
+
+  Future<void> waitForText(WidgetTester tester, String value) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 90));
+    while (DateTime.now().isBefore(deadline)) {
+      await tester.pump();
+      if (find.text(value).evaluate().isNotEmpty) return;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 500)),
+      );
+    }
+    expect(find.text(value), findsOneWidget);
   }
 
   // 보기 모드·정렬·최근 검색어가 SharedPreferences에 지속되므로,
@@ -140,9 +157,7 @@ void main() {
   });
 
   testWidgets('S11 백업 파일 생성 → 삭제 → zip 복원 왕복', (tester) async {
-    // 시스템 파일·저장 다이얼로그(FilePicker/FlutterFileDialog)는 자동 탭이
-    // 불가능해 M01 수동 범위로 남긴다. 여기서는 설정 화면 진입과 실제
-    // export→import 왕복을 실기기 파일 시스템으로 검증한다.
+    // 저장소 API의 zip 왕복을 확인한다. 시스템 파일 창은 아래 별도 테스트에서 검증한다.
     app.main();
     await settle(tester);
 
@@ -197,6 +212,73 @@ void main() {
     await repository.delete(seedId);
     await settle(tester);
   });
+
+  testWidgets('S11 시스템 파일 창으로 백업 저장 → 파일 선택 → 복원', (tester) async {
+    app.main();
+    await settle(tester);
+
+    final context = tester.element(find.byType(HomeScreen));
+    final repository = context.read<IAlbumRepository>();
+    expect(
+      (await repository.getAll()).any((a) => a.id == nativePickerSeedId),
+      isFalse,
+      reason: '기존 앨범과 테스트 시드 ID가 겹치면 테스트를 중단한다',
+    );
+
+    try {
+      await repository.add(
+        Album(
+          id: nativePickerSeedId,
+          title: nativePickerSeedTitle,
+          artists: const ['E2E Artist'],
+        ),
+      );
+      await settle(tester);
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await settle(tester);
+      await tester.tap(find.text('설정'));
+      await settle(tester);
+
+      await tester.scrollUntilVisible(
+        find.text('백업 생성'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('백업 생성'));
+      await tester.pump();
+      await waitForText(tester, '백업이 생성되었습니다.');
+
+      await repository.delete(nativePickerSeedId);
+      expect(
+        (await repository.getAll()).any((a) => a.id == nativePickerSeedId),
+        isFalse,
+      );
+
+      await tester.scrollUntilVisible(
+        find.text('백업 복원'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('백업 복원'));
+      await settle(tester);
+      await tester.tap(find.widgetWithText(FilledButton, '복원'));
+      await tester.pump();
+      await waitForText(tester, '백업이 복원되었습니다.');
+
+      expect(
+        (await repository.getAll()).any(
+          (a) => a.id == nativePickerSeedId && a.title == nativePickerSeedTitle,
+        ),
+        isTrue,
+      );
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.text(nativePickerSeedTitle), findsWidgets);
+    } finally {
+      await repository.delete(nativePickerSeedId);
+    }
+  }, skip: !nativeFileDialogsEnabled);
 
   testWidgets('S01·S05·S07 커버·아티스트 이미지가 저장되고 화면에 표시된다', (tester) async {
     app.main();
