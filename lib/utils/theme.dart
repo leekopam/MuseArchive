@@ -4,94 +4,80 @@ import 'package:flutter/services.dart';
 /// 앱 테마 정의
 class AppTheme {
   // region 색상 정의
-  static const Color _primaryLight = Color(0xFF007AFF);
-  static const Color _primaryDark = Color(0xFF0A84FF);
+  static const Color _primaryLight = Color(0xFF245A68);
+  static const Color _primaryDark = Color(0xFFA7D6DC);
 
-  static const Color _backgroundLight = Color(0xFFF2F2F7);
-  static const Color _backgroundDark = Color(0xFF000000);
+  static const Color _backgroundLight = Color(0xFFF6F6F5);
+  static const Color _backgroundDark = Color(0xFF292C30);
 
   static const Color _surfaceLight = Color(0xFFFFFFFF);
-  static const Color _surfaceDark = Color(0xFF1C1C1E);
+  static const Color _surfaceDark = Color(0xFF383C41);
 
-  static const Color _textPrimaryLight = Color(0xFF000000);
-  static const Color _textPrimaryDark = Color(0xFFFFFFFF);
+  static const Color _textPrimaryLight = Color(0xFF1C2024);
+  static const Color _textPrimaryDark = Color(0xFFF5F6F7);
 
-  static const Color _textSecondaryLight = Color(0xFF3C3C43);
-  static const Color _textSecondaryDark = Color(0xFFEBEBF5);
+  static const Color _textSecondaryLight = Color(0xFF4F5A63);
+  static const Color _textSecondaryDark = Color(0xFFCDD3D6);
 
-  static const Color _dividerLight = Color(0xFFDCDCDC);
-  static const Color _dividerDark = Color(0xFF444446);
+  static const Color _dividerLight = Color(0xFFD9DDDF);
+  static const Color _dividerDark = Color(0xFF555B60);
+  static const Color _controlLight = Color(0xFFEBEEEF);
+  static const Color _controlDark = Color(0xFF454A50);
   //endregion
 
   // endregion
 
-  // region 텍스트 스타
-  static const _fontFamily = 'System';
-
+  // region 텍스트 스타일
   static final TextTheme _textTheme = TextTheme(
     displayLarge: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.bold,
       fontSize: 34,
       color: _textPrimaryLight,
     ),
     displayMedium: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.bold,
       fontSize: 28,
       color: _textPrimaryLight,
     ),
     displaySmall: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.bold,
       fontSize: 22,
       color: _textPrimaryLight,
     ),
     headlineMedium: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.w600,
       fontSize: 17,
       letterSpacing: 0.15,
       color: _textPrimaryLight,
     ),
     titleLarge: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.w600,
       fontSize: 20,
       color: _textPrimaryLight,
     ),
     titleMedium: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.w500,
       fontSize: 16,
       letterSpacing: 0.15,
       color: _textPrimaryLight,
     ),
     titleSmall: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.w500,
       fontSize: 14,
       letterSpacing: 0.1,
       color: _textPrimaryLight,
     ),
     bodyLarge: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.normal,
       fontSize: 17,
       color: _textSecondaryLight,
     ),
     bodyMedium: TextStyle(
-      fontFamily: _fontFamily,
       fontWeight: FontWeight.normal,
       fontSize: 15,
       color: _textSecondaryLight,
     ),
-    labelLarge: TextStyle(
-      fontFamily: _fontFamily,
-      fontWeight: FontWeight.bold,
-      fontSize: 16,
-      color: Colors.white,
-    ),
+    labelLarge: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
   ).apply(displayColor: _textPrimaryLight, bodyColor: _textSecondaryLight);
 
   static final TextTheme _darkTextTheme = _textTheme.apply(
@@ -108,7 +94,6 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.light,
       primaryColor: _primaryLight,
-      fontFamily: _fontFamily,
       scaffoldBackgroundColor: _backgroundLight,
 
       colorScheme: const ColorScheme.light(
@@ -118,7 +103,10 @@ class AppTheme {
         onPrimary: Colors.white,
         onSecondary: Colors.white,
         onSurface: _textPrimaryLight,
-        error: Colors.redAccent,
+        onSurfaceVariant: _textSecondaryLight,
+        outline: _dividerLight,
+        surfaceContainerHighest: _controlLight,
+        error: Color(0xFFAE3542),
         onError: Colors.white,
       ),
 
@@ -138,7 +126,7 @@ class AppTheme {
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: _surfaceLight,
+        fillColor: _controlLight,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 12,
@@ -190,18 +178,20 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.dark,
       primaryColor: _primaryDark,
-      fontFamily: _fontFamily,
       scaffoldBackgroundColor: _backgroundDark,
 
       colorScheme: const ColorScheme.dark(
         primary: _primaryDark,
         secondary: _primaryDark,
         surface: _surfaceDark,
-        onPrimary: Colors.black,
-        onSecondary: Colors.black,
+        onPrimary: Color(0xFF0C2528),
+        onSecondary: Color(0xFF0C2528),
         onSurface: _textPrimaryDark,
-        error: Colors.redAccent,
-        onError: Colors.white,
+        onSurfaceVariant: _textSecondaryDark,
+        outline: _dividerDark,
+        surfaceContainerHighest: _controlDark,
+        error: Color(0xFFF19BA2),
+        onError: _backgroundDark,
       ),
 
       textTheme: _darkTextTheme,
@@ -218,7 +208,7 @@ class AppTheme {
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: _surfaceDark,
+        fillColor: _controlDark,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 12,
@@ -241,14 +231,17 @@ class AppTheme {
       cardTheme: CardThemeData(
         elevation: 0,
         color: _surfaceDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: _dividerDark),
+        ),
       ),
 
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: _primaryDark,
-          foregroundColor: _textPrimaryLight,
-          textStyle: _textTheme.labelLarge,
+          foregroundColor: const Color(0xFF0C2528),
+          textStyle: _darkTextTheme.labelLarge,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),

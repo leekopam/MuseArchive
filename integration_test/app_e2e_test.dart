@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:my_album_app/main.dart' as app;
 import 'package:my_album_app/models/album.dart';
@@ -18,6 +19,7 @@ import 'package:my_album_app/screens/home_screen.dart';
 import 'package:my_album_app/screens/settings_screen.dart';
 import 'package:my_album_app/services/album_repository.dart';
 import 'package:my_album_app/services/i_album_repository.dart';
+import 'package:my_album_app/services/theme_manager.dart';
 import 'package:my_album_app/viewmodels/home_viewmodel.dart';
 import 'package:my_album_app/widgets/animation_widgets.dart';
 
@@ -103,6 +105,96 @@ void main() {
     // 시드 데이터 정리
     await repository.delete(seedId);
     await settle(tester);
+  });
+
+  testWidgets('S01 컬렉션 → 위시리스트 → 컬렉션 이동 왕복', (tester) async {
+    app.main();
+    await settle(tester);
+
+    final context = tester.element(find.byType(HomeScreen));
+    final repository = context.read<IAlbumRepository>();
+    await repository.delete(seedId);
+
+    try {
+      await repository.add(
+        Album(id: seedId, title: seedTitle, artists: const [seedArtist]),
+      );
+      await settle(tester);
+
+      await tester.longPress(find.widgetWithText(TapScaleWrapper, seedTitle));
+      await settle(tester);
+      await tester.tap(find.text('위시리스트로 이동'));
+      await settle(tester);
+      expect(find.text(seedTitle), findsNothing);
+
+      await tester.tap(find.text('위시리스트'));
+      await settle(tester);
+      expect(find.text(seedTitle), findsWidgets);
+
+      await tester.longPress(find.widgetWithText(TapScaleWrapper, seedTitle));
+      await settle(tester);
+      await tester.tap(find.text('컬렉션으로 이동'));
+      await settle(tester);
+      expect(find.text(seedTitle), findsNothing);
+
+      await tester.tap(find.text('컬렉션'));
+      await settle(tester);
+      expect(find.text(seedTitle), findsWidgets);
+      expect(
+        (await repository.getAll())
+            .firstWhere((a) => a.id == seedId)
+            .isWishlist,
+        isFalse,
+      );
+    } finally {
+      await repository.delete(seedId);
+    }
+  });
+
+  testWidgets('S12 설정 다크 모드 → 홈 회색 테마 → 저장값 복원', (tester) async {
+    app.main();
+    await settle(tester);
+
+    final prefs = await SharedPreferences.getInstance();
+    final originalPreference = prefs.getBool('is_dark_mode');
+    final originalMode = themeNotifier.value;
+
+    try {
+      await saveTheme(false);
+      await settle(tester);
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await settle(tester);
+      await tester.tap(find.text('설정'));
+      await settle(tester);
+      expect(find.byType(SettingsScreen), findsOneWidget);
+
+      await tester.tap(find.byType(Switch));
+      await settle(tester);
+      expect(themeNotifier.value, ThemeMode.dark);
+      expect(prefs.getBool('is_dark_mode'), isTrue);
+
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(
+        Theme.of(
+          tester.element(find.byType(HomeScreen)),
+        ).scaffoldBackgroundColor,
+        const Color(0xFF292C30),
+      );
+
+      themeNotifier.value = ThemeMode.light;
+      await loadTheme();
+      expect(themeNotifier.value, ThemeMode.dark);
+    } finally {
+      if (originalPreference == null) {
+        await prefs.remove('is_dark_mode');
+      } else {
+        await prefs.setBool('is_dark_mode', originalPreference);
+      }
+      themeNotifier.value = originalMode;
+    }
   });
 
   testWidgets('S03·S07 홈 → 상세 → 제목 편집 → 복귀 왕복', (tester) async {

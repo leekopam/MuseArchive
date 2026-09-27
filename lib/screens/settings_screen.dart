@@ -311,11 +311,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // region 메인 UI
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.grey[50];
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black87;
-    final subTextColor = isDark ? Colors.white70 : Colors.grey[600];
+    final theme = Theme.of(context);
+    final bgColor = theme.scaffoldBackgroundColor;
+    final cardColor = theme.colorScheme.surface;
+    final textColor = theme.colorScheme.onSurface;
+    final subTextColor = theme.colorScheme.onSurfaceVariant;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -349,7 +349,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: ListTile(
-                leading: const Icon(Icons.brightness_6, color: Colors.purple),
+                leading: Icon(
+                  Icons.brightness_6,
+                  color: theme.colorScheme.primary,
+                ),
                 title: Text('다크 모드', style: TextStyle(color: textColor)),
                 trailing: Switch(
                   value: _isDarkMode,
@@ -545,7 +548,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 children: [
                   ListTile(
-                    leading: const Icon(Icons.backup, color: Colors.blue),
+                    leading: Icon(
+                      Icons.backup,
+                      color: theme.colorScheme.primary,
+                    ),
                     title: Text('백업 생성', style: TextStyle(color: textColor)),
                     subtitle: Text(
                       '현재 데이터를 백업 파일로 저장합니다.',
@@ -705,10 +711,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     return AlertDialog(
-      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      backgroundColor: scheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: Row(
         children: [
@@ -718,7 +724,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 : _isDownloading
                 ? Icons.downloading
                 : Icons.system_update_alt,
-            color: _installComplete ? Colors.green : Colors.blue,
+            color: _installComplete ? Colors.green : scheme.primary,
           ),
           const SizedBox(width: 12),
           Text(
@@ -757,7 +763,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               constraints: const BoxConstraints(maxHeight: 200),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isDark ? Colors.black26 : Colors.grey[100],
+                color: scheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: SingleChildScrollView(
@@ -765,7 +771,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                   widget.info.releaseNotes,
                   style: TextStyle(
                     fontSize: 14,
-                    color: isDark ? Colors.white70 : Colors.black87,
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -778,7 +784,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               child: LinearProgressIndicator(
                 value: _progress,
                 minHeight: 8,
-                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                backgroundColor: scheme.outline,
               ),
             ),
             const SizedBox(height: 8),
@@ -787,7 +793,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white70 : Colors.black54,
+                color: scheme.onSurfaceVariant,
               ),
             ),
           ],

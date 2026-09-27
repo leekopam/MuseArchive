@@ -4,6 +4,84 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:my_album_app/widgets/animation_widgets.dart';
 
 void main() {
+  testWidgets('앨범 카드 선택은 140ms 동안 축소·희미해졌다가 돌아온다', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: TapScaleWrapper(
+              child: ColoredBox(
+                color: Colors.blue,
+                child: SizedBox(width: 120, height: 120),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(TapScaleWrapper)),
+    );
+    // GestureDetector가 탭을 확정하는 시간 이후 컨트롤러의 140ms를 측정한다.
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 140));
+
+    final card = find.byType(TapScaleWrapper);
+    final scale = tester.widget<ScaleTransition>(
+      find.descendant(of: card, matching: find.byType(ScaleTransition)),
+    );
+    final fade = tester.widget<FadeTransition>(
+      find.descendant(of: card, matching: find.byType(FadeTransition)),
+    );
+    expect(scale.scale.value, closeTo(0.965, 0.001));
+    expect(fade.opacity.value, closeTo(0.55, 0.001));
+
+    await gesture.up();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 140));
+    expect(scale.scale.value, 1.0);
+    expect(fade.opacity.value, 1.0);
+  });
+
+  testWidgets('동작 줄이기가 켜지면 앨범 카드 선택 효과를 생략한다', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(reduceMotion: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: TapScaleWrapper(child: Text('앨범'))),
+      ),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(TapScaleWrapper)),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final card = find.byType(TapScaleWrapper);
+    expect(
+      tester
+          .widget<ScaleTransition>(
+            find.descendant(of: card, matching: find.byType(ScaleTransition)),
+          )
+          .scale
+          .value,
+      1.0,
+    );
+    expect(
+      tester
+          .widget<FadeTransition>(
+            find.descendant(of: card, matching: find.byType(FadeTransition)),
+          )
+          .opacity
+          .value,
+      1.0,
+    );
+    await gesture.up();
+  });
+
   group('EntryAnimationLimiter', () {
     // FadeSlideIn 내부의 FadeTransition만 조회한다 (라우트 전환의 FadeTransition과 구분)
     double itemOpacity(WidgetTester tester) {

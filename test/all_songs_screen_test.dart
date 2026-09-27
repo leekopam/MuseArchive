@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:my_album_app/models/album.dart';
 import 'package:my_album_app/models/track.dart';
 import 'package:my_album_app/screens/all_songs_screen.dart';
+import 'package:my_album_app/utils/theme.dart';
 
 import 'fakes.dart';
 
@@ -15,6 +16,30 @@ void main() {
 
   group('S09 AllSongsScreen', () {
     late FakeAlbumRepository repository;
+
+    testWidgets('다크 모드에서 곡 목록과 상단 바가 회색 배경을 쓴다', (tester) async {
+      repository = FakeAlbumRepository(albums: []);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark,
+          home: AllSongsScreen(repository: repository),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<CupertinoPageScaffold>(find.byType(CupertinoPageScaffold))
+            .backgroundColor,
+        const Color(0xFF292C30),
+      );
+      expect(
+        tester
+            .widget<CupertinoNavigationBar>(find.byType(CupertinoNavigationBar))
+            .backgroundColor,
+        const Color(0xFF292C30),
+      );
+    });
 
     Future<void> pumpSongs(WidgetTester tester) async {
       await tester.pumpWidget(

@@ -137,10 +137,11 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
   // region 메인 UI
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.grey[50];
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black87;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = theme.scaffoldBackgroundColor;
+    final cardColor = theme.colorScheme.surface;
+    final textColor = theme.colorScheme.onSurface;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -163,7 +164,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                   expandedHeight: 300.0,
                   floating: false,
                   pinned: true,
-                  backgroundColor: isDark ? Colors.black : Colors.white,
+                  backgroundColor: bgColor,
                   elevation: 0,
                   scrolledUnderElevation: 0,
                   leading: IconButton(
@@ -228,7 +229,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                                   isDark
                                       ? const Color(0xFF2C3E50)
                                       : const Color(0xFFBDC3C7),
-                                  isDark ? Colors.black : Colors.white,
+                                  bgColor,
                                 ],
                               ),
                             ),
@@ -349,7 +350,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                     viewModel,
                     isDark,
                     textColor,
-                    bgColor ?? (isDark ? Colors.black : Colors.white),
+                    bgColor,
                   ),
                   // 섹션 간 간격 (Sliver)
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -759,7 +760,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         child: Container(
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[100],
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.all(16),
@@ -870,7 +871,9 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                                     group,
                                     style: TextStyle(
                                       color: isExistingArtist
-                                          ? Colors.blue
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
                                           : textColor,
                                       fontSize: 13,
                                       decoration: isExistingArtist

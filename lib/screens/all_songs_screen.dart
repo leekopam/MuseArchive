@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show Theme;
 import 'package:shimmer/shimmer.dart';
 import '../models/album.dart';
 import '../utils/file_utils.dart';
@@ -368,10 +369,12 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
   // region 메인 UI
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
     return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('모든 곡'),
-        backgroundColor: CupertinoColors.systemBackground,
+      backgroundColor: backgroundColor,
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('모든 곡'),
+        backgroundColor: backgroundColor,
         border: null,
       ),
       child: SafeArea(
@@ -466,7 +469,6 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                   color: CupertinoColors.label.resolveFrom(context),
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
-                  fontFamily: '.SF Pro Text',
                   decoration: TextDecoration.none,
                 ),
                 textAlign: TextAlign.center,
@@ -845,7 +847,7 @@ class _GroupedSongListItem extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                  color: CupertinoColors.systemBackground.resolveFrom(context),
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   width: 1.5,
                 ),
                 boxShadow: [

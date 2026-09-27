@@ -12,6 +12,7 @@ import 'package:my_album_app/services/i_album_repository.dart';
 import 'package:my_album_app/services/spotify_service.dart';
 import 'package:my_album_app/services/theme_manager.dart';
 import 'package:my_album_app/services/update_service.dart';
+import 'package:my_album_app/utils/theme.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -73,6 +74,27 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(themeNotifier.value, ThemeMode.dark);
       expect(prefs.getBool('is_dark_mode'), isTrue);
+    });
+
+    testWidgets('다크 설정 화면은 공통 회색 배경과 표면을 사용한다', (tester) async {
+      themeNotifier.value = ThemeMode.dark;
+      await tester.pumpWidget(
+        _buildTestApp(
+          repository: _FakeAlbumRepository(),
+          updateService: _FakeUpdateService(currentVersion: '1.2.3'),
+          theme: AppTheme.dark,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+        AppTheme.dark.scaffoldBackgroundColor,
+      );
+      expect(
+        tester.widget<Card>(find.byType(Card).first).color,
+        AppTheme.dark.colorScheme.surface,
+      );
     });
 
     testWidgets('backup and restore actions use repository callbacks', (
@@ -204,6 +226,7 @@ Future<void> _scrollUntilVisible(WidgetTester tester, Finder finder) async {
 Widget _buildTestApp({
   required _FakeAlbumRepository repository,
   required _FakeUpdateService updateService,
+  ThemeData? theme,
 }) {
   return MultiProvider(
     providers: [
@@ -212,7 +235,7 @@ Widget _buildTestApp({
       Provider<DiscogsService>.value(value: DiscogsService()),
       Provider<UpdateService>.value(value: updateService),
     ],
-    child: const MaterialApp(home: SettingsScreen()),
+    child: MaterialApp(theme: theme, home: const SettingsScreen()),
   );
 }
 

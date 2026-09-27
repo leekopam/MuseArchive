@@ -98,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: CupertinoSlidingSegmentedControl<AlbumView>(
                 groupValue: viewModel.currentView,
                 onValueChanged: _onSegmentChanged,
+                thumbColor: theme.colorScheme.surface,
                 children: const {
                   AlbumView.collection: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20),
@@ -108,9 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Text('위시리스트'),
                   ),
                 },
-                backgroundColor: theme.colorScheme.surface.withValues(
-                  alpha: 0.8,
-                ),
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
               ),
             ),
             const SizedBox(height: 8),
@@ -433,6 +432,7 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                     onChanged: viewModel.setSearchQuery,
                     onSubmitted: viewModel.recordSearch,
                     style: TextStyle(color: theme.colorScheme.onSurface),
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
                   )
                 : const Text('MuseArchive', key: ValueKey('app-title')),
           ),
@@ -880,7 +880,10 @@ void _showSortOptions(BuildContext context, HomeViewModel viewModel) async {
                   ),
                 ),
                 trailing: viewModel.sortOption == option
-                    ? const Icon(Icons.check, color: Colors.blue)
+                    ? Icon(
+                        Icons.check,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
                     : null,
                 onTap: () => Navigator.pop(context, option),
               );

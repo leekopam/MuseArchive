@@ -91,7 +91,7 @@ class TapScaleWrapper extends StatefulWidget {
     required this.child,
     this.onTap,
     this.onLongPress,
-    this.scaleDown = 0.95,
+    this.scaleDown = 0.965,
     this.enabled = true,
   });
 
@@ -103,19 +103,22 @@ class _TapScaleWrapperState extends State<TapScaleWrapper>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _scaleAnimation;
+  late final Animation<double> _opacityAnimation;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 100),
-      reverseDuration: const Duration(milliseconds: 150),
+      duration: const Duration(milliseconds: 140),
+      reverseDuration: const Duration(milliseconds: 140),
       vsync: this,
     );
+    final curved = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: widget.scaleDown,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    ).animate(curved);
+    _opacityAnimation = Tween<double>(begin: 1.0, end: 0.55).animate(curved);
   }
 
   @override
@@ -152,7 +155,10 @@ class _TapScaleWrapperState extends State<TapScaleWrapper>
       onTapCancel: _onTapCancel,
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
-      child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
+      child: FadeTransition(
+        opacity: _opacityAnimation,
+        child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
+      ),
     );
   }
 }

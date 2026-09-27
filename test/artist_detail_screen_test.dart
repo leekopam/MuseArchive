@@ -11,6 +11,7 @@ import 'package:my_album_app/screens/detail_screen.dart';
 import 'package:my_album_app/services/i_album_repository.dart';
 import 'package:my_album_app/viewmodels/artist_viewmodel.dart';
 import 'package:my_album_app/viewmodels/global_artist_settings.dart';
+import 'package:my_album_app/utils/theme.dart';
 
 import 'fakes.dart';
 
@@ -36,6 +37,7 @@ void main() {
       WidgetTester tester, {
       required String artistName,
       String? sourceAlbumId,
+      ThemeData? theme,
     }) async {
       await tester.pumpWidget(
         MultiProvider(
@@ -46,6 +48,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
+            theme: theme,
             home: ArtistDetailScreen(
               artistName: artistName,
               sourceAlbumId: sourceAlbumId,
@@ -55,6 +58,20 @@ void main() {
       );
       await tester.pumpAndSettle();
     }
+
+    testWidgets('다크 아티스트 화면은 공통 회색 배경을 사용한다', (tester) async {
+      repository = FakeAlbumRepository(artists: [Artist(name: 'Artist Gray')]);
+      await openArtist(tester, artistName: 'Artist Gray', theme: AppTheme.dark);
+
+      expect(
+        tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+        AppTheme.dark.scaffoldBackgroundColor,
+      );
+      expect(
+        tester.widget<SliverAppBar>(find.byType(SliverAppBar)).backgroundColor,
+        AppTheme.dark.scaffoldBackgroundColor,
+      );
+    });
 
     testWidgets('S08 편집 다이얼로그에서 별명과 그룹을 저장해 정보 섹션에 반영한다', (
       tester,
