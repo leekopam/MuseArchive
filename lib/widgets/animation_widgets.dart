@@ -1,5 +1,80 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+
+// region 감속 모션 지원
+
+/// 플랫폼 접근성의 "애니메이션 삭제"(Android) 또는 "동작 줄이기"(iOS) 설정 여부.
+bool get reduceMotionEnabled {
+  final features =
+      WidgetsBinding.instance.platformDispatcher.accessibilityFeatures;
+  return features.disableAnimations || features.reduceMotion;
+}
+
+// endregion
+
+// region 입장 애니메이션 제한 스코프
+
+/// GridView.builder 등 지연 dispose 목록에서, 스크롤 복귀로 아이템이 재생성될 때
+/// 입장 애니메이션이 다시 실행되는 깜빡임을 막는다.
+/// 스코프 최초 마운트 후 [window]가 지난 뒤에 만들어지는 자식은 최종 상태로 바로 표시된다.
+/// 시간 창은 State가 유지되는 동안 유지되므로 부모 재빌드로 리셋되지 않는다.
+/// 다른 뷰로 전환해 새 목록에 애니메이션을 다시 주고 싶으면 키를 바꿔 State를 새로 만든다.
+class EntryAnimationLimiter extends StatefulWidget {
+  final Widget child;
+  final Duration window;
+
+  const EntryAnimationLimiter({
+    super.key,
+    required this.child,
+    this.window = const Duration(milliseconds: 800),
+  });
+
+  @override
+  State<EntryAnimationLimiter> createState() => _EntryAnimationLimiterState();
+}
+
+class _EntryAnimationLimiterState extends State<EntryAnimationLimiter> {
+  // 벽시계 대신 프레임 타임스탬프를 쓴다. 테스트에서 pump()로 경과를 제어할 수 있고,
+  // 실제 앱에서는 vsync에 맞춰 자연스럽게 증가한다.
+  late final Duration _startTimestamp =
+      SchedulerBinding.instance.currentFrameTimeStamp;
+
+  @override
+  Widget build(BuildContext context) {
+    return _EntryAnimationScope(
+      startTimestamp: _startTimestamp,
+      window: widget.window,
+      child: widget.child,
+    );
+  }
+}
+
+class _EntryAnimationScope extends InheritedWidget {
+  final Duration startTimestamp;
+  final Duration window;
+
+  const _EntryAnimationScope({
+    required this.startTimestamp,
+    required this.window,
+    required super.child,
+  });
+
+  bool get shouldAnimate =>
+      SchedulerBinding.instance.currentFrameTimeStamp - startTimestamp < window;
+
+  static _EntryAnimationScope? maybeOf(BuildContext context) {
+    return context
+            .getElementForInheritedWidgetOfExactType<_EntryAnimationScope>()
+            ?.widget
+        as _EntryAnimationScope?;
+  }
+
+  @override
+  bool updateShouldNotify(_EntryAnimationScope oldWidget) => false;
+}
+
+// endregion
 
 // region 탭 스케일 래퍼
 
@@ -40,10 +115,7 @@ class _TapScaleWrapperState extends State<TapScaleWrapper>
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: widget.scaleDown,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -53,7 +125,7 @@ class _TapScaleWrapperState extends State<TapScaleWrapper>
   }
 
   void _onTapDown(TapDownDetails _) {
-    if (widget.enabled) _controller.forward();
+    if (widget.enabled && !reduceMotionEnabled) _controller.forward();
   }
 
   void _onTapUp(TapUpDetails _) {
@@ -80,10 +152,7 @@ class _TapScaleWrapperState extends State<TapScaleWrapper>
       onTapCancel: _onTapCancel,
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
-      child: ScaleTransition(
-        scale: _scaleAnimation,
-        child: widget.child,
-      ),
+      child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
     );
   }
 }
@@ -135,15 +204,9 @@ class _FadeSlideInState extends State<FadeSlideIn>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    );
+    _controller = AnimationController(duration: widget.duration, vsync: this);
 
-    final curved = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    );
+    final curved = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(curved);
     // SlideTransition은 위젯 크기 비율 기반이므로 소수값으로 변환
@@ -152,8 +215,11 @@ class _FadeSlideInState extends State<FadeSlideIn>
       end: Offset.zero,
     ).animate(curved);
 
-    // 지연 후 애니메이션 시작
-    if (widget.delay == Duration.zero) {
+    // 감속 모션 설정이거나 스코프의 입장 시간 창이 지났으면 최종 상태로 바로 표시
+    final scope = _EntryAnimationScope.maybeOf(context);
+    if (reduceMotionEnabled || (scope != null && !scope.shouldAnimate)) {
+      _controller.value = 1.0;
+    } else if (widget.delay == Duration.zero) {
       _controller.forward();
     } else {
       Future.delayed(widget.delay, () {
@@ -172,10 +238,7 @@ class _FadeSlideInState extends State<FadeSlideIn>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: widget.child,
-      ),
+      child: SlideTransition(position: _slideAnimation, child: widget.child),
     );
   }
 }
@@ -186,31 +249,30 @@ class _FadeSlideInState extends State<FadeSlideIn>
 
 /// 슬라이드 + 페이드 페이지 전환 라우트
 class AnimatedPageRoute<T> extends PageRouteBuilder<T> {
-  AnimatedPageRoute({
-    required Widget page,
-    super.settings,
-  }) : super(
-          pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: const Duration(milliseconds: 300),
-          reverseTransitionDuration: const Duration(milliseconds: 250),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final curved = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeInOut,
-            );
+  AnimatedPageRoute({required Widget page, super.settings})
+    : super(
+        pageBuilder: (context, animation, secondaryAnimation) => page,
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 250),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          if (reduceMotionEnabled) return child;
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeInOut,
+          );
 
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.3, 0),
-                end: Offset.zero,
-              ).animate(curved),
-              child: FadeTransition(
-                opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curved),
-                child: child,
-              ),
-            );
-          },
-        );
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.3, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: FadeTransition(
+              opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      );
 }
 
 // endregion
