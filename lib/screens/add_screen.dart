@@ -9,7 +9,9 @@ import '../models/value_objects/release_date.dart';
 import '../viewmodels/album_form_viewmodel.dart';
 import '../widgets/common_widgets.dart';
 import '../services/haptic_service.dart';
+import '../utils/file_utils.dart';
 import 'barcode_scanner_screen.dart';
+import 'settings_screen.dart';
 
 typedef BarcodeScanCallback = Future<String?> Function();
 
@@ -37,6 +39,10 @@ class _AddScreenState extends State<AddScreen> {
   Timer? _debounce;
 
   String? _albumId;
+
+  // 자동 저장 상태 인디케이터용
+  bool _isSaving = false;
+  bool _hasPendingChanges = false;
 
   // region 라이프사이클
   @override
@@ -82,6 +88,9 @@ class _AddScreenState extends State<AddScreen> {
     if (_debounce?.isActive ?? false) {
       _debounce!.cancel();
     }
+    if (!_hasPendingChanges && mounted) {
+      setState(() => _hasPendingChanges = true);
+    }
     _debounce = Timer(const Duration(milliseconds: 1000), () {
       _saveIfNeeded();
     });
@@ -108,13 +117,21 @@ class _AddScreenState extends State<AddScreen> {
 
     _controllers.commitChanges(_viewModel);
 
-    // Debug Log
-    // Debug Log removed for production
-    // print("DEBUG: Saving Album...");
-
-    await _viewModel.saveAlbum(_albumId);
+    if (mounted) {
+      setState(() {
+        _isSaving = true;
+        _hasPendingChanges = false;
+      });
+    }
+    try {
+      await _viewModel.saveAlbum(_albumId);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
 
     if (_viewModel.errorMessage != null) {
+      // 저장 실패 — 변경분이 여전히 미저장이므로 '자동 저장됨'이 아니라 대기 표시를 복원한다
+      if (mounted) setState(() => _hasPendingChanges = true);
       return false;
     }
 
@@ -165,7 +182,7 @@ class _AddScreenState extends State<AddScreen> {
           if (viewModel.errorMessage != null) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
-                ErrorSnackBar.show(context, viewModel.errorMessage!);
+                _showApiErrorSnackBar(context, viewModel.errorMessage!);
               }
               viewModel.clearError();
             });
@@ -199,8 +216,35 @@ class _AddScreenState extends State<AddScreen> {
 
   // region UI 구성요소
   AppBar _buildAppBar(BuildContext context, AlbumFormViewModel viewModel) {
+    // 자동 저장 진행 상태를 앱바에 얕게 표시한다
+    final String? saveStatus;
+    if (_isSaving) {
+      saveStatus = '저장 중…';
+    } else if (_hasPendingChanges) {
+      saveStatus = '변경 사항 저장 대기';
+    } else if (_albumId != null) {
+      saveStatus = '자동 저장됨';
+    } else {
+      saveStatus = null;
+    }
+
     return AppBar(
-      title: Text(widget.albumToEdit == null ? '앨범 추가' : '앨범 수정'),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(widget.albumToEdit == null ? '앨범 추가' : '앨범 수정'),
+          if (saveStatus != null)
+            Text(
+              saveStatus,
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+        ],
+      ),
       actions: [
         IconButton(
           icon: const Icon(Icons.qr_code_scanner),
@@ -489,6 +533,25 @@ class _AddScreenState extends State<AddScreen> {
     );
   }
 
+  /// API 오류 스낵바. 토큰/인증 누락이 원인이면 '설정' 이동 액션을 함께 단다.
+  void _showApiErrorSnackBar(BuildContext context, String message) {
+    final needsSettings =
+        message.contains('토큰') ||
+        message.contains('인증') ||
+        message.contains('Client ID');
+    ErrorSnackBar.show(
+      context,
+      message,
+      actionLabel: needsSettings ? '설정' : null,
+      onAction: needsSettings
+          ? () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            )
+          : null,
+    );
+  }
+
   void _disposeDialogController(TextEditingController controller) {
     // showDialog completes before the exit animation fully unmounts the field.
     // Dispose one tick later so the route can finish detaching safely.
@@ -520,7 +583,7 @@ class _AddScreenState extends State<AddScreen> {
       }
       final errorMessage = viewModel.errorMessage;
       if (errorMessage != null) {
-        ErrorSnackBar.show(this.context, errorMessage);
+        _showApiErrorSnackBar(this.context, errorMessage);
         viewModel.clearError();
         return;
       }
@@ -590,7 +653,7 @@ class _AddScreenState extends State<AddScreen> {
           if (context.mounted) {
             final errorMessage = viewModel.errorMessage;
             if (errorMessage != null) {
-              ErrorSnackBar.show(context, errorMessage);
+              _showApiErrorSnackBar(context, errorMessage);
               viewModel.clearError();
             } else {
               _showSearchResultsDialog(viewModel, searchResults);
@@ -655,7 +718,7 @@ class _AddScreenState extends State<AddScreen> {
                       }
                       final errorMessage = viewModel.errorMessage;
                       if (errorMessage != null) {
-                        ErrorSnackBar.show(context, errorMessage);
+                        _showApiErrorSnackBar(context, errorMessage);
                         viewModel.clearError();
                         return;
                       }
@@ -834,7 +897,7 @@ class _AddScreenState extends State<AddScreen> {
           if (context.mounted) {
             final errorMessage = viewModel.errorMessage;
             if (errorMessage != null) {
-              ErrorSnackBar.show(context, errorMessage);
+              _showApiErrorSnackBar(context, errorMessage);
               viewModel.clearError();
             } else {
               _showVocadbSearchResultsDialog(viewModel, searchResults);
@@ -898,7 +961,7 @@ class _AddScreenState extends State<AddScreen> {
                       }
                       final errorMessage = viewModel.errorMessage;
                       if (errorMessage != null) {
-                        ErrorSnackBar.show(context, errorMessage);
+                        _showApiErrorSnackBar(context, errorMessage);
                         viewModel.clearError();
                         return;
                       }
@@ -1094,7 +1157,7 @@ class _AddScreenState extends State<AddScreen> {
 
           final errorMessage = viewModel.errorMessage;
           if (errorMessage != null) {
-            ErrorSnackBar.show(context, errorMessage);
+            _showApiErrorSnackBar(context, errorMessage);
             viewModel.clearError();
           } else {
             _showMusicBrainzSearchResultsDialog(viewModel, searchResults);
@@ -1158,7 +1221,7 @@ class _AddScreenState extends State<AddScreen> {
                       }
                       final errorMessage = viewModel.errorMessage;
                       if (errorMessage != null) {
-                        ErrorSnackBar.show(context, errorMessage);
+                        _showApiErrorSnackBar(context, errorMessage);
                         viewModel.clearError();
                         return;
                       }
@@ -1286,7 +1349,7 @@ class _AddScreenState extends State<AddScreen> {
         if (mounted) {
           final errorMessage = viewModel.errorMessage;
           if (errorMessage != null) {
-            ErrorSnackBar.show(context, errorMessage);
+            _showApiErrorSnackBar(context, errorMessage);
             viewModel.clearError();
           } else {
             _showSpotifyResultsDialog(viewModel, results);
@@ -1419,7 +1482,7 @@ class _AddScreenState extends State<AddScreen> {
         if (mounted) {
           final errorMessage = viewModel.errorMessage;
           if (errorMessage != null) {
-            ErrorSnackBar.show(context, errorMessage);
+            _showApiErrorSnackBar(context, errorMessage);
             viewModel.clearError();
           } else {
             _showDiscogsImageResults(viewModel, results);
@@ -1474,7 +1537,7 @@ class _AddScreenState extends State<AddScreen> {
                       }
                       final errorMessage = viewModel.errorMessage;
                       if (errorMessage != null) {
-                        ErrorSnackBar.show(context, errorMessage);
+                        _showApiErrorSnackBar(context, errorMessage);
                         viewModel.clearError();
                         return;
                       }
@@ -1594,7 +1657,7 @@ class _AddScreenState extends State<AddScreen> {
         if (mounted) {
           final errorMessage = viewModel.errorMessage;
           if (errorMessage != null) {
-            ErrorSnackBar.show(context, errorMessage);
+            _showApiErrorSnackBar(context, errorMessage);
             viewModel.clearError();
           } else {
             _showSpotifyLinkResultsDialog(viewModel, results);
@@ -1712,17 +1775,18 @@ class _ImagePicker extends StatelessWidget {
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: theme.dividerColor, width: 2),
-              image:
-                  album.imagePath != null && File(album.imagePath!).existsSync()
+              image: album.imagePath != null && fileExistsSync(album.imagePath!)
                   ? DecorationImage(
-                      image: FileImage(File(album.imagePath!)),
+                      image: ResizeImage(
+                        FileImage(File(album.imagePath!)),
+                        width: 450,
+                      ),
                       fit: BoxFit.cover,
                     )
                   : null,
             ),
             child:
-                (album.imagePath == null ||
-                    !File(album.imagePath!).existsSync())
+                (album.imagePath == null || !fileExistsSync(album.imagePath!))
                 ? Center(
                     child: Icon(
                       Icons.add_a_photo_outlined,

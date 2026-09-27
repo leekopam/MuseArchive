@@ -27,7 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
   bool _isDarkMode = false;
   String _currentVersion = '1.0.0';
- 
+
   // region 라이프사이클
   @override
   void initState() {
@@ -281,6 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: '백업 복원',
       content: '현재 데이터가 모두 삭제되고 백업 데이터로 복원됩니다. 계속하시겠습니까?',
       confirmText: '복원',
+      isDestructive: true,
     );
 
     if (!confirm) return;

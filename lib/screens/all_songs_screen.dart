@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/album.dart';
+import '../utils/file_utils.dart';
+import '../utils/korean_search_utils.dart';
 import '../models/track.dart';
 import '../services/haptic_service.dart';
 import '../services/i_album_repository.dart';
@@ -144,6 +146,8 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
     } else {
       final lowerQuery = _searchQuery.toLowerCase();
       final matchedArtists = _repository.getArtistNamesMatching(_searchQuery);
+      // "ㅂㅌㅅ" 같은 초성 검색어면 곡/아티스트의 초성열도 비교한다
+      final isChoseong = isChoseongQuery(_searchQuery);
 
       filtered = _allSongs.where((songRef) {
         final track = songRef.track;
@@ -155,8 +159,17 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
             track.titleKr?.toLowerCase().contains(lowerQuery) ?? false;
         final artistMatch = artistName.toLowerCase().contains(lowerQuery);
         final aliasMatch = matchedArtists.contains(artistName);
+        final choseongMatch =
+            isChoseong &&
+            (matchesChoseong(_searchQuery, track.title) ||
+                matchesChoseong(_searchQuery, track.titleKr ?? '') ||
+                matchesChoseong(_searchQuery, artistName));
 
-        return titleMatch || titleKrMatch || artistMatch || aliasMatch;
+        return titleMatch ||
+            titleKrMatch ||
+            artistMatch ||
+            aliasMatch ||
+            choseongMatch;
       }).toList();
     }
 
@@ -167,8 +180,9 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
 
     _filteredGroups = _groupSongs(filtered);
     _filteredGroups.sort((a, b) {
-      final artistCompare =
-          a.artistName.toLowerCase().compareTo(b.artistName.toLowerCase());
+      final artistCompare = a.artistName.toLowerCase().compareTo(
+        b.artistName.toLowerCase(),
+      );
       if (artistCompare != 0) return artistCompare;
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
@@ -399,7 +413,13 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Expanded(child: CustomScrollView(slivers: [_buildSongList()])),
+            Expanded(
+              // 화면 복귀 시 스크롤 위치를 복원한다
+              child: CustomScrollView(
+                key: const PageStorageKey('all-songs'),
+                slivers: [_buildSongList()],
+              ),
+            ),
           ],
         ),
       ),
@@ -438,7 +458,10 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                '표시할 곡이 없습니다',
+                // 검색 중인지, 필터만 적용된 상태인지에 따라 문구를 구분한다
+                _searchQuery.isNotEmpty
+                    ? '\'$_searchQuery\'에 대한 검색 결과가 없습니다'
+                    : '표시할 곡이 없습니다',
                 style: TextStyle(
                   color: CupertinoColors.label.resolveFrom(context),
                   fontSize: 20,
@@ -446,15 +469,21 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
                   fontFamily: '.SF Pro Text',
                   decoration: TextDecoration.none,
                 ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                '앨범을 추가하여 보관함을 채워보세요.',
+                _searchQuery.isNotEmpty
+                    ? '다른 검색어를 입력해보세요.'
+                    : (!_includeWishlist && _allSongs.isNotEmpty)
+                    ? '위시리스트 곡은 숨겨져 있습니다.'
+                    : '앨범을 추가하여 보관함을 채워보세요.',
                 style: TextStyle(
                   color: CupertinoColors.secondaryLabel.resolveFrom(context),
                   fontSize: 15,
                   decoration: TextDecoration.none,
                 ),
+                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -501,6 +530,7 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
       ),
     );
   }
+
   // endregion
 }
 
@@ -509,10 +539,8 @@ class _AllSongsScreenState extends State<AllSongsScreen> {
 // region 앨범 커버 빌더 (공용)
 Widget _buildAlbumCover(Album album, double size) {
   final imagePath = album.imagePath;
-  if (imagePath != null &&
-      imagePath.isNotEmpty &&
-      File(imagePath).existsSync()) {
-    return Image.file(File(imagePath), fit: BoxFit.cover);
+  if (imagePath != null && imagePath.isNotEmpty && fileExistsSync(imagePath)) {
+    return Image.file(File(imagePath), fit: BoxFit.cover, cacheWidth: 300);
   }
   return Container(
     width: size,
@@ -547,94 +575,125 @@ class _SongListItem extends StatelessWidget {
     final track = songRef.track;
     final imagePath = album.imagePath;
 
-    return CupertinoButton(
-      onPressed: onTap,
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 0, 12),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8.0),
-                  child: SizedBox(
-                    width: 50,
-                    height: 50,
-                    child:
-                        imagePath != null &&
-                            imagePath.isNotEmpty &&
-                            File(imagePath).existsSync()
-                        ? ColorFiltered(
-                            colorFilter: album.isWishlist
-                                ? const ColorFilter.mode(
-                                    CupertinoColors.systemGrey,
-                                    BlendMode.saturation,
-                                  )
-                                : const ColorFilter.mode(
-                                    CupertinoColors.transparent,
-                                    BlendMode.multiply,
-                                  ),
-                            child: Opacity(
-                              opacity: album.isWishlist ? 0.7 : 1.0,
-                              child: Image.file(
-                                File(imagePath),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          )
-                        : Container(
-                            color: CupertinoColors.systemGrey5,
-                            child: const Icon(
-                              CupertinoIcons.music_note,
-                              color: CupertinoColors.systemGrey,
-                              size: 24,
+    // 스크린리더에는 "곡 제목, 아티스트" 하나의 버튼으로 읽히도록 병합한다
+    final a11yLabel = [
+      if (album.isWishlist) '위시리스트',
+      track.title,
+      album.artist,
+    ].join(', ');
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                label: a11yLabel,
+                button: true,
+                onTap: onTap,
+                // 시각 버튼의 시맨틱스는 제외해 라벨 없는 중복 탭 노드를 막는다
+                child: ExcludeSemantics(
+                  child: CupertinoButton(
+                    onPressed: onTap,
+                    padding: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 0, 12),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8.0),
+                            child: SizedBox(
+                              width: 50,
+                              height: 50,
+                              child:
+                                  imagePath != null &&
+                                      imagePath.isNotEmpty &&
+                                      fileExistsSync(imagePath)
+                                  ? ColorFiltered(
+                                      colorFilter: album.isWishlist
+                                          ? const ColorFilter.mode(
+                                              CupertinoColors.systemGrey,
+                                              BlendMode.saturation,
+                                            )
+                                          : const ColorFilter.mode(
+                                              CupertinoColors.transparent,
+                                              BlendMode.multiply,
+                                            ),
+                                      child: Opacity(
+                                        opacity: album.isWishlist ? 0.7 : 1.0,
+                                        child: Image.file(
+                                          File(imagePath),
+                                          fit: BoxFit.cover,
+                                          cacheWidth: 150,
+                                        ),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: CupertinoColors.systemGrey5,
+                                      child: const Icon(
+                                        CupertinoIcons.music_note,
+                                        color: CupertinoColors.systemGrey,
+                                        size: 24,
+                                      ),
+                                    ),
                             ),
                           ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        track.title,
-                        style: TextStyle(
-                          color: album.isWishlist
-                              ? CupertinoColors.label
-                                    .resolveFrom(context)
-                                    .withValues(alpha: 0.6)
-                              : CupertinoColors.label.resolveFrom(context),
-                          fontSize: 17,
-                          fontWeight: album.isWishlist
-                              ? FontWeight.normal
-                              : FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        album.artist,
-                        style: TextStyle(
-                          color: album.isWishlist
-                              ? CupertinoColors.secondaryLabel
-                                    .resolveFrom(context)
-                                    .withValues(alpha: 0.5)
-                              : CupertinoColors.secondaryLabel.resolveFrom(
-                                  context,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  track.title,
+                                  style: TextStyle(
+                                    color: album.isWishlist
+                                        ? CupertinoColors.label
+                                              .resolveFrom(context)
+                                              .withValues(alpha: 0.6)
+                                        : CupertinoColors.label.resolveFrom(
+                                            context,
+                                          ),
+                                    fontSize: 17,
+                                    fontWeight: album.isWishlist
+                                        ? FontWeight.normal
+                                        : FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                          fontSize: 15,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                                const SizedBox(height: 2),
+                                Text(
+                                  album.artist,
+                                  style: TextStyle(
+                                    color: album.isWishlist
+                                        ? CupertinoColors.secondaryLabel
+                                              .resolveFrom(context)
+                                              .withValues(alpha: 0.5)
+                                        : CupertinoColors.secondaryLabel
+                                              .resolveFrom(context),
+                                    fontSize: 15,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                CupertinoButton(
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 옵션 버튼은 형제 노드여야 TalkBack에서 개별 활성화된다
+            Semantics(
+              label: '곡 옵션 열기',
+              button: true,
+              onTap: onMoreTap,
+              child: ExcludeSemantics(
+                child: CupertinoButton(
                   onPressed: onMoreTap,
                   padding: const EdgeInsets.all(12.0),
                   child: const Icon(
@@ -642,18 +701,18 @@ class _SongListItem extends StatelessWidget {
                     color: CupertinoColors.systemGrey2,
                   ),
                 ),
-              ],
+              ),
             ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 82.0, right: 16.0),
+          child: Container(
+            height: 1.0 / MediaQuery.devicePixelRatioOf(context),
+            color: CupertinoColors.separator.resolveFrom(context),
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 82.0, right: 16.0),
-            child: Container(
-              height: 1.0 / MediaQuery.devicePixelRatioOf(context),
-              color: CupertinoColors.separator.resolveFrom(context),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -663,88 +722,103 @@ class _GroupedSongListItem extends StatelessWidget {
   final _SongGroup group;
   final VoidCallback onTap;
 
-  const _GroupedSongListItem({
-    required this.group,
-    required this.onTap,
-  });
+  const _GroupedSongListItem({required this.group, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoButton(
-      onPressed: onTap,
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Row(
-              children: [
-                _buildStackedCovers(context),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        group.title,
-                        style: TextStyle(
-                          color: group.isAllWishlist
-                              ? CupertinoColors.label
-                                    .resolveFrom(context)
-                                    .withValues(alpha: 0.6)
-                              : CupertinoColors.label.resolveFrom(context),
-                          fontSize: 17,
-                          fontWeight: group.isAllWishlist
-                              ? FontWeight.normal
-                              : FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+    // "곡 제목, 아티스트, N개 앨범 수록" 하나의 버튼으로 읽히도록 병합한다
+    final a11yLabel =
+        '${group.title}, ${group.artistName}, ${group.albumCount}개 앨범 수록';
+    return Semantics(
+      label: a11yLabel,
+      button: true,
+      onTap: onTap,
+      // 내부 버튼의 중복 탭 노드가 생성되지 않도록 자식 시맨틱스를 제외한다
+      excludeSemantics: true,
+      child: CupertinoButton(
+        onPressed: onTap,
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  ExcludeSemantics(child: _buildStackedCovers(context)),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ExcludeSemantics(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            group.title,
+                            style: TextStyle(
+                              color: group.isAllWishlist
+                                  ? CupertinoColors.label
+                                        .resolveFrom(context)
+                                        .withValues(alpha: 0.6)
+                                  : CupertinoColors.label.resolveFrom(context),
+                              fontSize: 17,
+                              fontWeight: group.isAllWishlist
+                                  ? FontWeight.normal
+                                  : FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${group.artistName} \u00b7 ${group.albumCount}개 앨범 수록',
+                            style: TextStyle(
+                              color: CupertinoColors.secondaryLabel.resolveFrom(
+                                context,
+                              ),
+                              fontSize: 15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${group.artistName} \u00b7 ${group.albumCount}개 앨범 수록',
-                        style: TextStyle(
-                          color: CupertinoColors.secondaryLabel
-                              .resolveFrom(context),
-                          fontSize: 15,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // 앨범 수 배지
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: CupertinoColors.systemGrey5.resolveFrom(context),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${group.albumCount}',
-                    style: TextStyle(
-                      color: CupertinoColors.secondaryLabel
-                          .resolveFrom(context),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  // 앨범 수 배지
+                  ExcludeSemantics(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CupertinoColors.systemGrey5.resolveFrom(context),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${group.albumCount}',
+                        style: TextStyle(
+                          color: CupertinoColors.secondaryLabel.resolveFrom(
+                            context,
+                          ),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 82.0, right: 16.0),
-            child: Container(
-              height: 1.0 / MediaQuery.devicePixelRatioOf(context),
-              color: CupertinoColors.separator.resolveFrom(context),
+            Padding(
+              padding: const EdgeInsets.only(left: 82.0, right: 16.0),
+              child: Container(
+                height: 1.0 / MediaQuery.devicePixelRatioOf(context),
+                color: CupertinoColors.separator.resolveFrom(context),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

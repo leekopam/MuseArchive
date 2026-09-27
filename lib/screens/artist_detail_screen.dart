@@ -5,11 +5,13 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/album.dart';
 import '../models/artist.dart';
+import '../utils/file_utils.dart';
 import '../viewmodels/artist_viewmodel.dart';
 import '../viewmodels/global_artist_settings.dart';
 import '../services/haptic_service.dart';
 import '../services/i_album_repository.dart';
 import '../widgets/animation_widgets.dart';
+import '../widgets/common_widgets.dart';
 import 'detail_screen.dart';
 
 // region 아티스트 상세 화면 메인
@@ -67,6 +69,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
 
     showModalBottomSheet(
       context: context,
+      showDragHandle: true,
       builder: (BuildContext context) {
         return SafeArea(
           child: Wrap(
@@ -122,70 +125,11 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
   }
 
   Widget _buildFormatBadge(Album album) {
-    const formatColors = {
-      'LP': Color(0xFFD4AF37),
-      'CD': Color(0xFF607D8B),
-      'DVD': Color(0xFF8E24AA),
-      'Blu-ray': Color(0xFF2962FF),
-    };
-    final formatPriority = ['LP', 'CD', 'DVD', 'Blu-ray'];
-
-    List<Widget> badges = [];
-
-    // vinyl은 LP로 매핑
-    const formatAliases = {
-      'LP': ['lp', 'vinyl'],
-    };
-
-    for (final format in formatPriority) {
-      final aliases = formatAliases[format];
-      if (album.formats.any(
-        (f) {
-          final lower = f.toLowerCase();
-          if (aliases != null) {
-            return aliases.any((alias) => lower.contains(alias));
-          }
-          return lower.contains(format.toLowerCase());
-        },
-      )) {
-        badges.add(
-          Container(
-            margin: const EdgeInsets.only(bottom: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(
-              color: formatColors[format],
-              borderRadius: BorderRadius.circular(4),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 3,
-                ),
-              ],
-            ),
-            child: Text(
-              format,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        );
-      }
-    }
-
-    if (badges.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
+    if (album.formats.isEmpty) return const SizedBox.shrink();
     return Positioned(
       top: 4,
       left: 4,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: badges,
-      ),
+      child: AlbumFormatBadges(formats: album.formats, isCompact: true),
     );
   }
   // endregion
@@ -211,6 +155,8 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
           final imagePath = artist?.imagePath;
 
           return NestedScrollView(
+            // 화면 복귀 시 스크롤 위치를 복원한다
+            key: PageStorageKey('artist-detail-${widget.artistName}'),
             headerSliverBuilder: (context, innerBoxIsScrolled) {
               return [
                 SliverAppBar(
@@ -248,6 +194,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                         Icons.edit,
                         color: innerBoxIsScrolled ? textColor : Colors.white,
                       ),
+                      tooltip: '아티스트 정보 편집',
                       onPressed: () => _showEditDialog(context, viewModel),
                     ),
                   ],
@@ -265,8 +212,12 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                       fit: StackFit.expand,
                       children: [
                         // 배경용 블러 이미지
-                        if (imagePath != null && File(imagePath).existsSync())
-                          Image.file(File(imagePath), fit: BoxFit.cover)
+                        if (imagePath != null && fileExistsSync(imagePath))
+                          Image.file(
+                            File(imagePath),
+                            fit: BoxFit.cover,
+                            cacheWidth: 1024,
+                          )
                         else
                           Container(
                             decoration: BoxDecoration(
@@ -294,84 +245,94 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
 
                         // 중앙 원형 이미지
                         Center(
-                          child: GestureDetector(
+                          child: Semantics(
+                            label: '아티스트 이미지 변경',
+                            button: true,
                             onTap: _pickImage,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Hero(
-                                  tag: 'artist_image_${widget.artistName}',
-                                  child: Container(
-                                    width: 140,
-                                    height: 140,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(
-                                            alpha: 0.3,
+                            // 내부 GestureDetector의 중복 탭 노드를 제외한다
+                            excludeSemantics: true,
+                            child: GestureDetector(
+                              onTap: _pickImage,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Hero(
+                                    tag: 'artist_image_${widget.artistName}',
+                                    child: Container(
+                                      width: 140,
+                                      height: 140,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.3,
+                                            ),
+                                            blurRadius: 15,
+                                            offset: const Offset(0, 8),
                                           ),
-                                          blurRadius: 15,
-                                          offset: const Offset(0, 8),
+                                        ],
+                                        border: Border.all(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.2,
+                                          ),
+                                          width: 4,
+                                        ),
+                                      ),
+                                      child: ClipOval(
+                                        child:
+                                            imagePath != null &&
+                                                fileExistsSync(imagePath)
+                                            ? Image.file(
+                                                File(imagePath),
+                                                fit: BoxFit.cover,
+                                                cacheWidth: 420,
+                                              )
+                                            : Container(
+                                                color: Colors.grey[800],
+                                                child: const Icon(
+                                                  Icons.person,
+                                                  size: 60,
+                                                  color: Colors.white54,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  // 카메라 아이콘 (힌트)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(
+                                          Icons.camera_alt,
+                                          color: Colors.white70,
+                                          size: 14,
+                                        ),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          '이미지 변경',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                          ),
                                         ),
                                       ],
-                                      border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                        width: 4,
-                                      ),
-                                    ),
-                                    child: ClipOval(
-                                      child:
-                                          imagePath != null &&
-                                              File(imagePath).existsSync()
-                                          ? Image.file(
-                                              File(imagePath),
-                                              fit: BoxFit.cover,
-                                            )
-                                          : Container(
-                                              color: Colors.grey[800],
-                                              child: const Icon(
-                                                Icons.person,
-                                                size: 60,
-                                                color: Colors.white54,
-                                              ),
-                                            ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 12),
-                                // 카메라 아이콘 (힌트)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.4),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: const [
-                                      Icon(
-                                        Icons.camera_alt,
-                                        color: Colors.white70,
-                                        size: 14,
-                                      ),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        '이미지 변경',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -400,7 +361,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Text(
-                        'Albums',
+                        '앨범',
                         style: TextStyle(
                           color: textColor,
                           fontSize: 22,
@@ -483,9 +444,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                     HapticService.lightTap();
                     await Navigator.push(
                       context,
-                      AnimatedPageRoute(
-                        page: DetailScreen(album: album),
-                      ),
+                      AnimatedPageRoute(page: DetailScreen(album: album)),
                     );
                     // 돌아올 때 데이터 새로고침
                     if (context.mounted) {
@@ -509,7 +468,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                         ),
                         child:
                             album.imagePath != null &&
-                                File(album.imagePath!).existsSync()
+                                fileExistsSync(album.imagePath!)
                             ? ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: ColorFiltered(
@@ -527,6 +486,7 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                                     child: Image.file(
                                       File(album.imagePath!),
                                       fit: BoxFit.cover,
+                                      cacheWidth: 240,
                                     ),
                                   ),
                                 ),
@@ -882,35 +842,43 @@ class _ArtistDetailContentState extends State<_ArtistDetailContent> {
                           final isExistingArtist = viewModel.artists.any(
                             (a) => a.name == group,
                           );
-                          return GestureDetector(
-                            onTap: isExistingArtist
-                                ? () {
-                                    HapticService.lightTap();
-                                    Navigator.push(
-                                      context,
-                                      AnimatedPageRoute(
-                                        page: ArtistDetailScreen(
-                                          artistName: group,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                : null,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 2.0,
+                          void openArtist() {
+                            HapticService.lightTap();
+                            Navigator.push(
+                              context,
+                              AnimatedPageRoute(
+                                page: ArtistDetailScreen(artistName: group),
                               ),
-                              child: Text(
-                                group,
-                                style: TextStyle(
-                                  color: isExistingArtist
-                                      ? Colors.blue
-                                      : textColor,
-                                  fontSize: 13,
-                                  decoration: isExistingArtist
-                                      ? TextDecoration.underline
-                                      : TextDecoration.none,
-                                  fontWeight: FontWeight.w500,
+                            );
+                          }
+
+                          return Semantics(
+                            label: isExistingArtist ? '$group 아티스트로 이동' : group,
+                            button: isExistingArtist,
+                            // 스크린리더 활성화가 실제 이동과 동일하게 동작해야 한다
+                            onTap: isExistingArtist ? openArtist : null,
+                            // GestureDetector의 라벨 없는 중복 탭 노드를 제외한다
+                            child: ExcludeSemantics(
+                              child: GestureDetector(
+                                onTap: isExistingArtist ? openArtist : null,
+                                child: Padding(
+                                  // 터치 타겟 확보를 위해 상하 패딩을 넓힌다
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8.0,
+                                  ),
+                                  child: Text(
+                                    group,
+                                    style: TextStyle(
+                                      color: isExistingArtist
+                                          ? Colors.blue
+                                          : textColor,
+                                      fontSize: 13,
+                                      decoration: isExistingArtist
+                                          ? TextDecoration.underline
+                                          : TextDecoration.none,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),

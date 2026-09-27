@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/album.dart';
 import '../services/i_album_repository.dart';
+import '../utils/file_utils.dart';
 import '../services/haptic_service.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/animation_widgets.dart';
@@ -201,33 +202,40 @@ class _DetailScreenState extends State<DetailScreen> {
           children: [
             Hero(
               tag: 'album-cover-${_currentAlbum.id}',
-              child:
-                  _currentAlbum.imagePath != null &&
-                      File(_currentAlbum.imagePath!).existsSync()
-                  ? Image.file(
-                      File(_currentAlbum.imagePath!),
-                      fit: BoxFit.cover,
-                    )
-                  : Center(
-                      child: Icon(
-                        Icons.album,
-                        size: 100,
-                        color: const Color(0xFFD4AF37), // 메탈릭 골드
+              child: GestureDetector(
+                onTap: _openCoverViewer,
+                child:
+                    _currentAlbum.imagePath != null &&
+                        fileExistsSync(_currentAlbum.imagePath!)
+                    ? Image.file(
+                        File(_currentAlbum.imagePath!),
+                        fit: BoxFit.cover,
+                        cacheWidth: 1080,
+                      )
+                    : Center(
+                        child: Icon(
+                          Icons.album,
+                          size: 100,
+                          color: const Color(0xFFD4AF37), // 메탈릭 골드
+                        ),
                       ),
-                    ),
+              ),
             ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: const [
-                    Color(0xA6000000),
-                    Color(0x33000000),
-                    Color(0x14000000),
-                    Color(0xD9000000),
-                  ],
-                  stops: const [0.0, 0.18, 0.5, 1.0],
+            // 그래디언트는 순수 시각 효과이므로 히트 테스트에서 제외해 커버 탭이 통하도록 한다
+            IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: const [
+                      Color(0xA6000000),
+                      Color(0x33000000),
+                      Color(0x14000000),
+                      Color(0xD9000000),
+                    ],
+                    stops: const [0.0, 0.18, 0.5, 1.0],
+                  ),
                 ),
               ),
             ),
@@ -556,6 +564,30 @@ class _DetailScreenState extends State<DetailScreen> {
   // endregion
 
   // region 기능 메서드
+  /// 커버를 풀스크린 뷰어로 연다. 핀치줌과 수직 드래그 닫기를 지원한다.
+  void _openCoverViewer() {
+    final path = _currentAlbum.imagePath;
+    if (path == null || !fileExistsSync(path)) return;
+    HapticService.lightTap();
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        barrierDismissible: true,
+        barrierLabel: '닫기',
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return FadeTransition(
+            opacity: animation,
+            child: _CoverViewer(
+              imagePath: path,
+              heroTag: 'album-cover-${_currentAlbum.id}',
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _toggleWishlistStatus() async {
     final newAlbum = _currentAlbum.copyWith(
       isWishlist: !_currentAlbum.isWishlist,
@@ -611,9 +643,12 @@ class _DetailScreenState extends State<DetailScreen> {
       title: '앨범 삭제',
       content: '정말로 이 앨범을 삭제하시겠습니까?',
       confirmText: '삭제',
+      isDestructive: true,
     );
     if (confirm == true && mounted) {
-      await _repository.delete(_currentAlbum.id);
+      // 화면이 pop된 뒤에도 스낵바가 살아있도록 루트 메신저를 미리 잡아둔다
+      final messenger = ScaffoldMessenger.of(context);
+      await deleteAlbumWithUndo(_repository, _currentAlbum, messenger);
       if (mounted) {
         Navigator.pop(context, true);
       }
@@ -636,5 +671,77 @@ class _DetailScreenState extends State<DetailScreen> {
 
   // endregion
 }
+
+// region 풀스크린 커버 뷰어
+class _CoverViewer extends StatefulWidget {
+  final String imagePath;
+  final String heroTag;
+
+  const _CoverViewer({required this.imagePath, required this.heroTag});
+
+  @override
+  State<_CoverViewer> createState() => _CoverViewerState();
+}
+
+class _CoverViewerState extends State<_CoverViewer> {
+  final TransformationController _transformController =
+      TransformationController();
+  bool _dragDismissEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformController.addListener(_syncDismissState);
+  }
+
+  /// 수직 드래그 인식기는 InteractiveViewer보다 먼저 제스처를 가져가므로,
+  /// 확대 상태에서는 꺼서 이미지 패닝이 동작하도록 한다.
+  void _syncDismissState() {
+    final enabled = _transformController.value.getMaxScaleOnAxis() <= 1.01;
+    if (enabled != _dragDismissEnabled) {
+      setState(() => _dragDismissEnabled = enabled);
+    }
+  }
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      // 이미지가 contain 레터박스보다 작거나 디코딩 전이어도 뷰어 전체에서 닫기가 동작해야 하므로 opaque로 한다.
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.pop(context),
+        onVerticalDragEnd: _dragDismissEnabled
+            ? (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (velocity.abs() > 300) Navigator.pop(context);
+              }
+            : null,
+        child: Center(
+          child: Hero(
+            tag: widget.heroTag,
+            child: InteractiveViewer(
+              transformationController: _transformController,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Image.file(
+                File(widget.imagePath),
+                fit: BoxFit.contain,
+                cacheWidth: 2048,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+// endregion
 
 // endregion
