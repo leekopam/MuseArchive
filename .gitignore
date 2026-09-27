@@ -89,3 +89,6 @@ AGENTS*.md
 /.opencode/
 /.cursor/
 /.windsurf/
+
+# 로컬 백업 산출물 (보내기 zip)
+/docs/REF/
