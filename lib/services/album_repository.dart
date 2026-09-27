@@ -11,6 +11,7 @@ import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import '../models/album.dart';
 import '../models/artist.dart';
 import '../models/track.dart';
+import '../utils/file_utils.dart';
 import 'album_backup_utils.dart';
 import 'i_album_repository.dart';
 
@@ -129,6 +130,7 @@ class AlbumRepository implements IAlbumRepository {
           final oldFile = File(oldAlbum.imagePath!);
           if (await oldFile.exists()) {
             await oldFile.delete();
+            invalidateFileExists(oldAlbum.imagePath!);
           }
         }
 
@@ -204,7 +206,8 @@ class AlbumRepository implements IAlbumRepository {
       final updatedTracks = otherAlbum.tracks.map((track) {
         if (track.isHeader) return track;
         final newTitleKr = changedTracks[track.title.toLowerCase()];
-        if (newTitleKr == null && !changedTracks.containsKey(track.title.toLowerCase())) {
+        if (newTitleKr == null &&
+            !changedTracks.containsKey(track.title.toLowerCase())) {
           return track;
         }
         if (track.titleKr == newTitleKr) return track;
@@ -220,7 +223,7 @@ class AlbumRepository implements IAlbumRepository {
   }
 
   @override
-  Future<void> delete(String albumId) async {
+  Future<void> delete(String albumId, {bool preserveFiles = false}) async {
     dynamic keyToDelete;
     Map? albumMap;
 
@@ -239,11 +242,13 @@ class AlbumRepository implements IAlbumRepository {
     }
 
     final album = Album.fromMap(albumMap);
-    if (album.imagePath != null) {
+    // preserveFiles면 Undo 복원을 위해 커버 파일을 유지한다 (확정 시 호출자가 정리)
+    if (!preserveFiles && album.imagePath != null) {
       try {
         final file = File(album.imagePath!);
         if (await file.exists()) {
           await file.delete();
+          invalidateFileExists(album.imagePath!);
         }
       } catch (e) {
         debugPrint("Image delete failed: $e");
@@ -366,6 +371,7 @@ class AlbumRepository implements IAlbumRepository {
           final oldFile = File(existingArtist.imagePath!);
           if (await oldFile.exists()) {
             await oldFile.delete();
+            invalidateFileExists(existingArtist.imagePath!);
           }
         }
 
@@ -880,6 +886,9 @@ class AlbumRepository implements IAlbumRepository {
         await artistImagesDir.delete(recursive: true);
       }
       await artistImagesDir.create(recursive: true);
+
+      // 이미지 디렉터리가 통째로 바뀌므로 경로 캐시를 전부 버린다
+      clearFileExistsCache();
 
       await box.clear();
       await artistBox.clear();

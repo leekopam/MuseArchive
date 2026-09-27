@@ -397,7 +397,7 @@ class _FakeAlbumRepository implements IAlbumRepository {
   Future<void> update(String albumId, Album album) async {}
 
   @override
-  Future<void> delete(String albumId) async {}
+  Future<void> delete(String albumId, {bool preserveFiles = false}) async {}
 
   @override
   Future<void> reorder(int oldIndex, int newIndex) async {}

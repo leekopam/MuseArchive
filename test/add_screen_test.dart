@@ -844,43 +844,44 @@ void main() {
       );
     });
 
-    testWidgets('shows Discogs image search errors instead of empty result guidance', (
-      WidgetTester tester,
-    ) async {
-      const errorMessage = 'Discogs API 토큰이 설정되지 않았습니다. 설정에서 토큰을 입력해주세요.';
-      final repository = _FakeAlbumRepository();
-      final existingAlbum = Album(
-        id: 'album-discogs-image-error',
-        title: 'Sand Planet',
-        artists: const <String>['hachi'],
-      );
-      final viewModel = _FakeAlbumFormViewModel(
-        repository: repository,
-        discogsSearchError: errorMessage,
-      );
-
-      await tester.pumpWidget(
-        _buildAddScreenApp(
+    testWidgets(
+      'shows Discogs image search errors instead of empty result guidance',
+      (WidgetTester tester) async {
+        const errorMessage = 'Discogs API 토큰이 설정되지 않았습니다. 설정에서 토큰을 입력해주세요.';
+        final repository = _FakeAlbumRepository();
+        final existingAlbum = Album(
+          id: 'album-discogs-image-error',
+          title: 'Sand Planet',
+          artists: const <String>['hachi'],
+        );
+        final viewModel = _FakeAlbumFormViewModel(
           repository: repository,
-          viewModel: viewModel,
-          child: AddScreen(albumToEdit: existingAlbum),
-        ),
-      );
-      await tester.pumpAndSettle();
+          discogsSearchError: errorMessage,
+        );
 
-      await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Discogs에서 검색').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _buildAddScreenApp(
+            repository: repository,
+            viewModel: viewModel,
+            child: AddScreen(albumToEdit: existingAlbum),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(viewModel.discogsSearchCalls, 1);
-      expect(find.text(errorMessage), findsOneWidget);
-      expect(find.text('검색 결과가 없습니다.'), findsNothing);
-      expect(find.text('이미지 선택'), findsNothing);
-      expect(repository.updateCalls, 0);
-    });
+        await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Discogs에서 검색').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ElevatedButton, '검색'));
+        await tester.pumpAndSettle();
+
+        expect(viewModel.discogsSearchCalls, 1);
+        expect(find.text(errorMessage), findsOneWidget);
+        expect(find.text('검색 결과가 없습니다.'), findsNothing);
+        expect(find.text('이미지 선택'), findsNothing);
+        expect(repository.updateCalls, 0);
+      },
+    );
 
     testWidgets('does not autosave when the Discogs cover download fails', (
       WidgetTester tester,
@@ -1791,8 +1792,7 @@ void main() {
 
         final secondTrackField = find.byWidgetPredicate(
           (widget) =>
-              widget is TextField &&
-              widget.decoration?.labelText == '트랙 2',
+              widget is TextField && widget.decoration?.labelText == '트랙 2',
         );
         await tester.scrollUntilVisible(
           secondTrackField,
@@ -1815,8 +1815,7 @@ void main() {
         // 'Intro' 트랙 카드의 삭제 버튼을 눌러 제거한다
         final firstTrackField = find.byWidgetPredicate(
           (widget) =>
-              widget is TextField &&
-              widget.decoration?.labelText == '트랙 1',
+              widget is TextField && widget.decoration?.labelText == '트랙 1',
         );
         await tester.scrollUntilVisible(
           firstTrackField,
@@ -1824,10 +1823,7 @@ void main() {
           scrollable: find.byType(Scrollable).first,
         );
         final deleteButton = find.descendant(
-          of: find.ancestor(
-            of: firstTrackField,
-            matching: find.byType(Card),
-          ),
+          of: find.ancestor(of: firstTrackField, matching: find.byType(Card)),
           matching: find.byIcon(Icons.remove_circle_outline),
         );
         await tester.tap(deleteButton);
@@ -1875,8 +1871,7 @@ void main() {
 
         final headerField = find.byWidgetPredicate(
           (widget) =>
-              widget is TextField &&
-              widget.decoration?.labelText == '디스크 제목',
+              widget is TextField && widget.decoration?.labelText == '디스크 제목',
         );
         await tester.scrollUntilVisible(
           headerField,
@@ -2023,7 +2018,7 @@ class _FakeAlbumRepository implements IAlbumRepository {
   }
 
   @override
-  Future<void> delete(String albumId) async {}
+  Future<void> delete(String albumId, {bool preserveFiles = false}) async {}
 
   @override
   Future<void> reorder(int oldIndex, int newIndex) async {}

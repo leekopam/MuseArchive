@@ -15,7 +15,10 @@ abstract class IAlbumRepository {
   Future<List<Album>> getAll();
   Future<void> add(Album album);
   Future<void> update(String albumId, Album album);
-  Future<void> delete(String albumId);
+
+  /// [preserveFiles]가 true면 커버 이미지 파일을 디스크에 남긴다.
+  /// 삭제 실행취소(Undo) 흐름처럼 복원 가능성이 있는 경우에만 사용한다.
+  Future<void> delete(String albumId, {bool preserveFiles = false});
   Future<void> reorder(int oldIndex, int newIndex);
   //endregion
 

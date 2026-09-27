@@ -21,6 +21,9 @@ class FakeAlbumRepository implements IAlbumRepository {
   final Map<String, Artist> _artists;
   final ValueNotifier<int> _notifier = ValueNotifier<int>(0);
 
+  /// 복원 실패 경로 테스트용 — add 호출 시 예외를 던진다.
+  bool failOnAdd = false;
+
   @override
   Future<void> init() async {}
 
@@ -34,6 +37,7 @@ class FakeAlbumRepository implements IAlbumRepository {
 
   @override
   Future<void> add(Album album) async {
+    if (failOnAdd) throw StateError('injected add failure');
     albums.add(album);
     _notify();
   }
@@ -47,7 +51,7 @@ class FakeAlbumRepository implements IAlbumRepository {
   }
 
   @override
-  Future<void> delete(String albumId) async {
+  Future<void> delete(String albumId, {bool preserveFiles = false}) async {
     albums.removeWhere((a) => a.id == albumId);
     _notify();
   }
@@ -90,10 +94,7 @@ class FakeAlbumRepository implements IAlbumRepository {
   // 실구현 계약: 아티스트 레코드가 없으면 조용히 아무 것도 하지 않는다.
   // artistBox 변경은 albumBox listenable을 발화시키지 않으므로 _notify도 호출하지 않는다.
   @override
-  Future<void> updateArtistImage(
-    String artistName,
-    String? imagePath,
-  ) async {
+  Future<void> updateArtistImage(String artistName, String? imagePath) async {
     final current = _artists[artistName];
     if (current == null) return;
     _artists[artistName] = Artist(
@@ -114,10 +115,7 @@ class FakeAlbumRepository implements IAlbumRepository {
   ) async {
     final current = _artists[artistName];
     if (current == null) return;
-    _artists[artistName] = current.copyWith(
-      aliases: aliases,
-      groups: groups,
-    );
+    _artists[artistName] = current.copyWith(aliases: aliases, groups: groups);
   }
 
   @override
