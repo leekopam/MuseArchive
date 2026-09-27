@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -32,20 +33,24 @@ class DiscogsService {
   DiscogsService._internal()
     : _tokenProvider = _readApiTokenFromPreferences,
       _get = http.get,
-      _imageGet = http.get;
+      _imageGet = http.get,
+      _apiTimeout = const Duration(seconds: 15);
 
   @visibleForTesting
   DiscogsService.forTesting({
     DiscogsTokenProvider? tokenProvider,
     DiscogsHttpGet? get,
     DiscogsHttpGet? imageGet,
+    Duration apiTimeout = const Duration(seconds: 15),
   }) : _tokenProvider = tokenProvider ?? _readApiTokenFromPreferences,
        _get = get ?? http.get,
-       _imageGet = imageGet ?? http.get;
+       _imageGet = imageGet ?? http.get,
+       _apiTimeout = apiTimeout;
 
   final DiscogsTokenProvider _tokenProvider;
   final DiscogsHttpGet _get;
   final DiscogsHttpGet _imageGet;
+  final Duration _apiTimeout;
   //endregion
 
   // endregion
@@ -84,12 +89,37 @@ class DiscogsService {
       'Authorization': 'Discogs token=$token',
     };
 
-    final response = await _get(uri, headers: headers);
+    // 타임아웃이 없으면 응답 지연 시 UI가 무한 로딩에 빠진다
+    final http.Response response;
+    try {
+      response = await _requestWithTimeout(uri, headers);
+    } on TimeoutException {
+      throw const DiscogsServiceException(
+        'Discogs 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
+      );
+    } on SocketException {
+      // DNS 실패·오프라인 등 연결 자체가 안 되는 경우를 구분해 안내한다
+      throw const DiscogsServiceException(
+        '네트워크에 연결할 수 없습니다. 인터넷 연결을 확인한 뒤 다시 시도해주세요.',
+      );
+    }
     if (response.statusCode == 200) {
       return response;
     }
 
     throw DiscogsServiceException(_messageForStatusCode(response.statusCode));
+  }
+
+  // 간헐적 연결 지연은 새 요청으로 한 번 더 시도해 흡수한다
+  Future<http.Response> _requestWithTimeout(
+    Uri uri,
+    Map<String, String> headers,
+  ) async {
+    try {
+      return await _get(uri, headers: headers).timeout(_apiTimeout);
+    } on TimeoutException {
+      return _get(uri, headers: headers).timeout(_apiTimeout);
+    }
   }
 
   static String _messageForStatusCode(int statusCode) {
@@ -219,8 +249,7 @@ class DiscogsService {
       final rawData = await _fetchRawAlbumDetails(releaseId);
 
       String? localImagePath;
-      if (rawData['images'] != null &&
-          (rawData['images'] as List).isNotEmpty) {
+      if (rawData['images'] != null && (rawData['images'] as List).isNotEmpty) {
         final imageUrl = rawData['images'][0]['resource_url'];
         if (imageUrl != null) {
           localImagePath = await downloadAndSaveImage(
@@ -267,7 +296,7 @@ class DiscogsService {
       final response = await _imageGet(
         Uri.parse(imageUrl),
         headers: {'User-Agent': 'MuseArchiveApp/1.0'},
-      );
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         if (!await _isDecodableImage(response.bodyBytes)) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -27,15 +28,23 @@ class VocadbService {
   // region 싱글톤 패턴
   static final VocadbService _instance = VocadbService._internal();
   factory VocadbService() => _instance;
-  VocadbService._internal() : _httpGet = http.get, _imageHttpGet = http.get;
+  VocadbService._internal()
+    : _httpGet = http.get,
+      _imageHttpGet = http.get,
+      _apiTimeout = const Duration(seconds: 15);
 
   @visibleForTesting
-  VocadbService.forTesting({VocadbHttpGet? get, VocadbHttpGet? imageGet})
-    : _httpGet = get ?? http.get,
-      _imageHttpGet = imageGet ?? http.get;
+  VocadbService.forTesting({
+    VocadbHttpGet? get,
+    VocadbHttpGet? imageGet,
+    Duration apiTimeout = const Duration(seconds: 15),
+  }) : _httpGet = get ?? http.get,
+       _imageHttpGet = imageGet ?? http.get,
+       _apiTimeout = apiTimeout;
 
   final VocadbHttpGet _httpGet;
   final VocadbHttpGet _imageHttpGet;
+  final Duration _apiTimeout;
   String? _lastImageDownloadWarning;
 
   String? get lastImageDownloadWarning => _lastImageDownloadWarning;
@@ -59,7 +68,19 @@ class VocadbService {
     final headers = {'User-Agent': _userAgent};
 
     try {
-      return await _httpGet(uri, headers: headers);
+      // 타임아웃이 없으면 응답 지연 시 UI가 무한 로딩에 빠진다.
+      // 실기에서 vocadb.net 연결이 간헐적으로 스톨하는 사례가 있어
+      // 타임아웃 시 새 요청으로 한 번 더 시도한다.
+      try {
+        return await _httpGet(uri, headers: headers).timeout(_apiTimeout);
+      } on TimeoutException {
+        return await _httpGet(uri, headers: headers).timeout(_apiTimeout);
+      }
+    } on TimeoutException {
+      debugPrint('VocaDB 요청 타임아웃');
+      throw const VocadbServiceException(
+        'VocaDB 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
+      );
     } catch (e) {
       debugPrint("VocaDB 연동 오류: $e");
       throw const VocadbServiceException(
@@ -385,7 +406,7 @@ class VocadbService {
       final response = await _imageHttpGet(
         Uri.parse(imageUrl),
         headers: {'User-Agent': _userAgent},
-      );
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         if (!await _isDecodableImage(response.bodyBytes)) {

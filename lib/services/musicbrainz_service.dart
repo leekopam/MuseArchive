@@ -28,13 +28,19 @@ class MusicBrainzService {
   // region 싱글톤 패턴
   static final MusicBrainzService _instance = MusicBrainzService._internal();
   factory MusicBrainzService() => _instance;
-  MusicBrainzService._internal() : _httpGet = http.get;
+  MusicBrainzService._internal()
+    : _httpGet = http.get,
+      _apiTimeout = const Duration(seconds: 15);
 
   @visibleForTesting
-  MusicBrainzService.forTesting({MusicBrainzHttpGet? get})
-    : _httpGet = get ?? http.get;
+  MusicBrainzService.forTesting({
+    MusicBrainzHttpGet? get,
+    Duration apiTimeout = const Duration(seconds: 15),
+  }) : _httpGet = get ?? http.get,
+       _apiTimeout = apiTimeout;
 
   final MusicBrainzHttpGet _httpGet;
+  final Duration _apiTimeout;
   //endregion
 
   // region 상수
@@ -56,7 +62,17 @@ class MusicBrainzService {
     final headers = {'User-Agent': _userAgent, 'Accept': 'application/json'};
 
     try {
-      return await _httpGet(uri, headers: headers);
+      // 타임아웃이 없으면 응답 지연 시 UI가 무한 로딩에 빠진다.
+      // 간헐적 연결 지연은 새 요청으로 한 번 더 시도해 흡수한다.
+      try {
+        return await _httpGet(uri, headers: headers).timeout(_apiTimeout);
+      } on TimeoutException {
+        return await _httpGet(uri, headers: headers).timeout(_apiTimeout);
+      }
+    } on TimeoutException {
+      throw const MusicBrainzServiceException(
+        'MusicBrainz 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
+      );
     } catch (e) {
       debugPrint('MusicBrainz 요청 오류: $e');
       throw const MusicBrainzServiceException(

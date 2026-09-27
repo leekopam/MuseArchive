@@ -6,6 +6,7 @@
 /// dart:io 실제 소켓 경계까지 검증한다.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -158,10 +159,7 @@ class _StubApiServer {
   final List<Map<String, String>> requests = [];
 
   /// 테스트별 교체 가능한 GitHub 응답 (상태, 본문)
-  ({int status, String body}) githubResponse = (
-    status: 200,
-    body: '',
-  );
+  ({int status, String body}) githubResponse = (status: 200, body: '');
 
   static const _ok = 200;
   static const _failMarker = '__fail__';
@@ -384,6 +382,70 @@ void main() {
         value: 4,
         unit: 'count',
         thresholdValue: 4,
+      );
+    });
+
+    // 응답이 오지 않는 호출이 무한 대기하지 않고 타임아웃 예외로 변환되는지 검증
+    test('S15 VocaDB 응답 지연이 타임아웃 예외로 변환된다', () async {
+      final service = VocadbService.forTesting(
+        get: (uri, {headers}) => Completer<http.Response>().future,
+        apiTimeout: const Duration(milliseconds: 200),
+      );
+      await expectLater(
+        service.searchAlbums('wowaka'),
+        throwsA(isA<VocadbServiceException>()),
+      );
+    });
+
+    test('S15 Discogs 응답 지연이 타임아웃 예외로 변환된다', () async {
+      final service = DiscogsService.forTesting(
+        tokenProvider: () async => 'test-token',
+        get: (uri, {headers}) => Completer<http.Response>().future,
+        apiTimeout: const Duration(milliseconds: 200),
+      );
+      await expectLater(
+        service.searchAlbumsByTitleArtist(title: 'test'),
+        throwsA(isA<DiscogsServiceException>()),
+      );
+    });
+
+    test('S15 VocaDB 첫 요청 지연 시 재시도가 실제 응답으로 회복된다', () async {
+      var calls = 0;
+      final service = VocadbService.forTesting(
+        get: (uri, {headers}) {
+          calls++;
+          // 첫 요청만 응답 없이 지연시켜 재시도 경로를 검증한다
+          if (calls == 1) return Completer<http.Response>().future;
+          return Future.value(http.Response('{"items":[]}', 200));
+        },
+        apiTimeout: const Duration(milliseconds: 200),
+      );
+      expect(await service.searchAlbums('wowaka'), isEmpty);
+      expect(calls, 2);
+    });
+
+    test('S15 Spotify 인증 응답 지연이 타임아웃 예외로 변환된다', () async {
+      final service = SpotifyService.forTesting(
+        credentialProvider: () async =>
+            const SpotifyCredentials(clientId: 'id', clientSecret: 'secret'),
+        post: (uri, {headers, body, encoding}) =>
+            Completer<http.Response>().future,
+        apiTimeout: const Duration(milliseconds: 200),
+      );
+      await expectLater(
+        service.searchAlbums('wowaka'),
+        throwsA(isA<SpotifyServiceException>()),
+      );
+    });
+
+    test('S15 MusicBrainz 응답 지연이 타임아웃 예외로 변환된다', () async {
+      final service = MusicBrainzService.forTesting(
+        get: (uri, {headers}) => Completer<http.Response>().future,
+        apiTimeout: const Duration(milliseconds: 200),
+      );
+      await expectLater(
+        service.searchAlbums('wowaka'),
+        throwsA(isA<MusicBrainzServiceException>()),
       );
     });
   });

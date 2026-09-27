@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -48,21 +49,25 @@ class SpotifyService {
   SpotifyService._internal()
     : _credentialProvider = _readCredentialsFromPreferences,
       _post = http.post,
-      _get = http.get;
+      _get = http.get,
+      _apiTimeout = const Duration(seconds: 15);
 
   @visibleForTesting
   SpotifyService.forTesting({
     SpotifyCredentialProvider? credentialProvider,
     SpotifyHttpPost? post,
     SpotifyHttpGet? get,
+    Duration apiTimeout = const Duration(seconds: 15),
   }) : _credentialProvider =
            credentialProvider ?? _readCredentialsFromPreferences,
        _post = post ?? http.post,
-       _get = get ?? http.get;
+       _get = get ?? http.get,
+       _apiTimeout = apiTimeout;
 
   final SpotifyCredentialProvider _credentialProvider;
   final SpotifyHttpPost _post;
   final SpotifyHttpGet _get;
+  final Duration _apiTimeout;
   //endregion
 
   // endregion
@@ -139,15 +144,33 @@ class SpotifyService {
   Future<http.Response> _requestAccessToken(
     SpotifyCredentials credentials,
   ) async {
+    // 타임아웃이 없으면 응답 지연 시 UI가 무한 로딩에 빠진다.
+    // 간헐적 연결 지연은 새 요청으로 한 번 더 시도해 흡수한다.
     try {
-      return await _post(
-        Uri.parse(_authUrl),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization':
-              'Basic ${base64Encode(utf8.encode('${credentials.normalizedClientId}:${credentials.normalizedClientSecret}'))}',
-        },
-        body: {'grant_type': 'client_credentials'},
+      try {
+        return await _post(
+          Uri.parse(_authUrl),
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization':
+                'Basic ${base64Encode(utf8.encode('${credentials.normalizedClientId}:${credentials.normalizedClientSecret}'))}',
+          },
+          body: {'grant_type': 'client_credentials'},
+        ).timeout(_apiTimeout);
+      } on TimeoutException {
+        return await _post(
+          Uri.parse(_authUrl),
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization':
+                'Basic ${base64Encode(utf8.encode('${credentials.normalizedClientId}:${credentials.normalizedClientSecret}'))}',
+          },
+          body: {'grant_type': 'client_credentials'},
+        ).timeout(_apiTimeout);
+      }
+    } on TimeoutException {
+      throw const SpotifyServiceException(
+        'Spotify 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
       );
     } catch (e) {
       debugPrint('Spotify 인증 요청 오류');
@@ -229,11 +252,24 @@ class SpotifyService {
 
   Future<http.Response> _requestAlbumSearch(String query, String token) async {
     try {
-      return await _get(
-        Uri.parse(
-          '$_baseUrl/search?q=${Uri.encodeComponent(query)}&type=album&limit=20',
-        ),
-        headers: {'Authorization': 'Bearer $token'},
+      try {
+        return await _get(
+          Uri.parse(
+            '$_baseUrl/search?q=${Uri.encodeComponent(query)}&type=album&limit=20',
+          ),
+          headers: {'Authorization': 'Bearer $token'},
+        ).timeout(_apiTimeout);
+      } on TimeoutException {
+        return await _get(
+          Uri.parse(
+            '$_baseUrl/search?q=${Uri.encodeComponent(query)}&type=album&limit=20',
+          ),
+          headers: {'Authorization': 'Bearer $token'},
+        ).timeout(_apiTimeout);
+      }
+    } on TimeoutException {
+      throw const SpotifyServiceException(
+        'Spotify 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.',
       );
     } catch (e) {
       debugPrint('Spotify 검색 요청 오류');
@@ -287,7 +323,9 @@ class SpotifyService {
   // region 이미지 다운로드
   Future<List<int>?> downloadImage(String url) async {
     try {
-      final response = await _get(Uri.parse(url));
+      final response = await _get(
+        Uri.parse(url),
+      ).timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         return response.bodyBytes;
       }
