@@ -770,7 +770,8 @@ class AlbumRepository implements IAlbumRepository {
 
       final bytes = await File(zipPath).readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
-      extractArchiveToDisk(archive, extractDir.path);
+      // 추출이 끝나기 전에 스테이징하면 이미지 해석이 누락된다
+      await extractArchiveToDisk(archive, extractDir.path);
 
       final albumsFile = File('${extractDir.path}/albums.json');
       if (!await albumsFile.exists()) {
