@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -6,12 +10,15 @@ import 'package:provider/provider.dart';
 
 import 'package:my_album_app/main.dart' as app;
 import 'package:my_album_app/models/album.dart';
+import 'package:my_album_app/models/track.dart';
 import 'package:my_album_app/screens/add_screen.dart';
+import 'package:my_album_app/screens/all_songs_screen.dart';
 import 'package:my_album_app/screens/detail_screen.dart';
 import 'package:my_album_app/screens/home_screen.dart';
 import 'package:my_album_app/screens/settings_screen.dart';
 import 'package:my_album_app/services/album_repository.dart';
 import 'package:my_album_app/services/i_album_repository.dart';
+import 'package:my_album_app/viewmodels/home_viewmodel.dart';
 import 'package:my_album_app/widgets/animation_widgets.dart';
 
 // 실기 L3: 앱 기동 → 시드 앨범 표시 → 상세 진입 → 삭제까지의 사용자 흐름.
@@ -20,7 +27,9 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   const seedId = 'e2e-seed-0001';
+  const seedId2 = 'e2e-seed-0002';
   const seedTitle = 'E2E Seed Album';
+  const seedArtist = 'E2E Artist';
 
   /// 무한 애니메이션(스켈레톤 등)이 있어도 30초 안에 실패로 종료한다
   Future<void> settle(WidgetTester tester) async {
@@ -30,6 +39,11 @@ void main() {
       const Duration(seconds: 30),
     );
   }
+
+  // 보기 모드·정렬·최근 검색어가 SharedPreferences에 지속되므로,
+  // 이전 시나리오(또는 이전 실행)의 값이 다음 테스트를 오염시키지 않게 지운다.
+  // 예: 이미지 시나리오가 아티스트 뷰에서 끝나면 검색 시나리오가 목록 뷰로 시작해 실패한다.
+  setUp(HomeViewModel.debugClearPersistedState);
 
   testWidgets('S01·S07 홈 표시 → 상세 진입 → 삭제 왕복', (tester) async {
     app.main();
@@ -56,12 +70,22 @@ void main() {
     await settle(tester);
     await tester.tap(find.text('앨범 삭제'));
     await settle(tester);
-    await tester.tap(find.widgetWithText(TextButton, '삭제'));
+    await tester.tap(find.widgetWithText(FilledButton, '삭제'));
     await settle(tester);
 
     final albums = await repository.getAll();
     expect(albums.any((a) => a.id == seedId), isFalse);
     expect(find.text(seedTitle), findsNothing);
+
+    // 삭제 스낵바의 "실행 취소"로 복원된다
+    await tester.tap(find.text('실행 취소'));
+    await settle(tester);
+    expect(find.text(seedTitle), findsWidgets);
+    expect((await repository.getAll()).any((a) => a.id == seedId), isTrue);
+
+    // 시드 데이터 정리
+    await repository.delete(seedId);
+    await settle(tester);
   });
 
   testWidgets('S03·S07 홈 → 상세 → 제목 편집 → 복귀 왕복', (tester) async {
@@ -90,10 +114,7 @@ void main() {
 
     // 제목 필드 수정 → 자동 저장 디바운스 대기
     const editedTitle = 'E2E Edited Album';
-    await tester.enterText(
-      find.byType(TextFormField).first,
-      editedTitle,
-    );
+    await tester.enterText(find.byType(TextFormField).first, editedTitle);
     await tester.pump(const Duration(milliseconds: 1300));
     await settle(tester);
 
@@ -111,10 +132,7 @@ void main() {
     expect(find.text(editedTitle), findsWidgets);
 
     final albums = await repository.getAll();
-    expect(
-      albums.firstWhere((a) => a.id == seedId).title,
-      editedTitle,
-    );
+    expect(albums.firstWhere((a) => a.id == seedId).title, editedTitle);
 
     // 다음 실행을 위해 시드 데이터를 정리한다
     await repository.delete(seedId);
@@ -179,4 +197,239 @@ void main() {
     await repository.delete(seedId);
     await settle(tester);
   });
+
+  testWidgets('S01·S05·S07 커버·아티스트 이미지가 저장되고 화면에 표시된다', (tester) async {
+    app.main();
+    await settle(tester);
+
+    final context = tester.element(find.byType(HomeScreen));
+    final repository = context.read<IAlbumRepository>();
+    await repository.delete(seedId);
+
+    // 기기 임시 폴더에 실제 PNG를 쓰고 시드 앨범의 커버로 연결한다.
+    // repository.add가 원본을 album_images/로 복사해 imagePath를 재작성한다.
+    final tempDir = await getTemporaryDirectory();
+    final coverSource = '${tempDir.path}/e2e_cover.png';
+    await File(coverSource).writeAsBytes(_onePixelPngBytes);
+    await repository.add(
+      Album(
+        id: seedId,
+        title: seedTitle,
+        artists: const [seedArtist],
+        imagePath: coverSource,
+      ),
+    );
+    await settle(tester);
+
+    // S05: 커버가 앱 문서 폴더의 album_images로 복사돼 경로가 재작성된다
+    final stored = (await repository.getAll()).firstWhere(
+      (a) => a.id == seedId,
+    );
+    expect(stored.imagePath, contains('album_images'));
+    expect(stored.imagePath != coverSource, isTrue);
+    expect(await File(stored.imagePath!).exists(), isTrue);
+
+    // S01: 그리드 카드가 플레이스홀더 아이콘 대신 실제 Image를 렌더링한다
+    final seedCard = find.widgetWithText(TapScaleWrapper, seedTitle);
+    expect(seedCard, findsOneWidget);
+    expect(
+      find.descendant(of: seedCard, matching: find.byType(Image)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: seedCard, matching: find.byIcon(Icons.album)),
+      findsNothing,
+    );
+
+    // S07: 상세 커버 탭 → 풀스크린 뷰어 → 탭으로 닫기
+    await tester.tap(seedCard);
+    await settle(tester);
+    expect(find.byType(DetailScreen), findsOneWidget);
+
+    // 홈 카드의 Hero가 아래 라우트에 남아 있으므로 상세 화면 범위로 좁힌다
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DetailScreen),
+        matching: find.byType(Hero),
+      ),
+    );
+    await settle(tester);
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+
+    await tester.tapAt(tester.getCenter(find.byType(Scaffold).last));
+    await settle(tester);
+    expect(find.byType(InteractiveViewer), findsNothing);
+    expect(find.byType(DetailScreen), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await settle(tester);
+    expect(find.byType(HomeScreen), findsOneWidget);
+
+    // 아티스트 이미지도 artist_images/로 복사되고 아티스트 뷰 아바타에 표시된다
+    final artistSource = '${tempDir.path}/e2e_artist.png';
+    await File(artistSource).writeAsBytes(_onePixelPngBytes);
+    await repository.updateArtistImage(seedArtist, artistSource);
+
+    final artist = repository.getArtistByName(seedArtist);
+    expect(artist, isNotNull);
+    expect(artist!.imagePath, contains('artist_images'));
+    expect(await File(artist.imagePath!).exists(), isTrue);
+
+    // 보기 모드 grid2 → grid3 → artists
+    await tester.tap(find.byTooltip('3열 그리드로 보기'));
+    await settle(tester);
+    await tester.tap(find.byTooltip('아티스트 목록으로 보기'));
+    await settle(tester);
+
+    final artistTile = find.widgetWithText(ListTile, seedArtist);
+    expect(artistTile, findsOneWidget);
+    expect(
+      find.descendant(of: artistTile, matching: find.byType(Image)),
+      findsOneWidget,
+    );
+
+    // 앨범 삭제가 아티스트 레코드를 지우면 파일이 고아가 되므로 먼저 해제한다
+    await repository.updateArtistImage(seedArtist, null);
+    await repository.delete(seedId);
+    await File(coverSource).delete();
+    await File(artistSource).delete();
+    await settle(tester);
+  });
+
+  testWidgets('S01·S09 홈·곡 목록 검색이 필터링하고 닫으면 복원된다', (tester) async {
+    app.main();
+    await settle(tester);
+
+    final context = tester.element(find.byType(HomeScreen));
+    final repository = context.read<IAlbumRepository>();
+    await repository.delete(seedId);
+    await repository.delete(seedId2);
+    await repository.add(
+      Album(
+        id: seedId,
+        title: 'E2E Alpha Album',
+        titleKr: 'e2e한국어제목',
+        artists: const ['E2E ArtistA'],
+        genres: const ['e2e-genre-x'],
+        tracks: [
+          Track(title: 'E2E Track X'),
+          Track(title: 'Interlude'),
+        ],
+      ),
+    );
+    await repository.add(
+      Album(
+        id: seedId2,
+        title: 'E2E Beta Album',
+        artists: const ['E2E ArtistB'],
+        tracks: [Track(title: 'Other Song')],
+      ),
+    );
+    // 별명 매칭은 아티스트 메타데이터에 의존한다 (add()가 아티스트 레코드를 만든 뒤 설정)
+    await repository.updateArtistMetadata('E2E ArtistA', const [
+      'e2e-alias-a',
+    ], const []);
+    await settle(tester);
+
+    // 검색 필드 열기 → 제목 부분 문자열로 Beta가 숨겨진다
+    await tester.tap(find.byTooltip('검색'));
+    await settle(tester);
+    expect(find.byType(CupertinoSearchTextField), findsOneWidget);
+
+    void expectOnlyAlphaShown() {
+      expect(find.text('E2E Alpha Album'), findsOneWidget);
+      expect(find.text('E2E Beta Album'), findsNothing);
+    }
+
+    await tester.enterText(
+      find.byType(CupertinoSearchTextField),
+      'alpha album',
+    );
+    await settle(tester);
+    expectOnlyAlphaShown();
+
+    // 화면 표시는 영문 title이지만 한국어 제목(titleKr)으로도 매칭된다
+    await tester.enterText(find.byType(CupertinoSearchTextField), 'e2e한국어');
+    await settle(tester);
+    expectOnlyAlphaShown();
+
+    // 아티스트 별명·장르도 매칭 대상이다
+    await tester.enterText(
+      find.byType(CupertinoSearchTextField),
+      'e2e-alias-a',
+    );
+    await settle(tester);
+    expectOnlyAlphaShown();
+
+    await tester.enterText(
+      find.byType(CupertinoSearchTextField),
+      'e2e-genre-x',
+    );
+    await settle(tester);
+    expectOnlyAlphaShown();
+
+    // 매칭 없는 검색어는 검색어를 포함한 빈 상태 문구를 보인다
+    await tester.enterText(find.byType(CupertinoSearchTextField), '존재하지않는검색어');
+    await settle(tester);
+    expect(find.text("'존재하지않는검색어'에 대한 검색 결과가 없습니다."), findsOneWidget);
+
+    // 검색 제출 시 최근 검색어에 기록되고, 입력이 비면 칩으로 노출된다
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await settle(tester);
+    // 실기기에서는 submit이 필드 포커스를 해제하고, 그 뒤의 enterText('')가
+    // 실 IME의 이전 값 되밀기로 되돌아간다. 사용자 경로인 X 지우기 버튼으로 지운다.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(CupertinoSearchTextField),
+        matching: find.byIcon(CupertinoIcons.xmark_circle_fill),
+      ),
+    );
+    await settle(tester);
+    expect(find.text('최근 검색'), findsOneWidget);
+    expect(find.text('존재하지않는검색어'), findsWidgets);
+
+    // 검색을 닫으면 필터가 해제되고 목록이 복원된다
+    await tester.tap(find.byTooltip('검색'));
+    await settle(tester);
+    expect(find.text('E2E Alpha Album'), findsOneWidget);
+    expect(find.text('E2E Beta Album'), findsOneWidget);
+
+    // S09: 모든 곡 목록의 검색은 트랙 제목을 필터링한다
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await settle(tester);
+    await tester.tap(find.text('모든 곡 목록'));
+    await settle(tester);
+    expect(find.byType(AllSongsScreen), findsOneWidget);
+
+    final songSearch = find.descendant(
+      of: find.byType(AllSongsScreen),
+      matching: find.byType(CupertinoSearchTextField),
+    );
+    expect(songSearch, findsOneWidget);
+
+    await tester.enterText(songSearch, 'track x');
+    await settle(tester);
+    expect(find.text('E2E Track X'), findsOneWidget);
+    expect(find.text('Interlude'), findsNothing);
+    expect(find.text('Other Song'), findsNothing);
+
+    await tester.enterText(songSearch, 'other');
+    await settle(tester);
+    expect(find.text('Other Song'), findsOneWidget);
+    expect(find.text('E2E Track X'), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await settle(tester);
+    expect(find.byType(HomeScreen), findsOneWidget);
+
+    // 시드 데이터 정리
+    await repository.delete(seedId);
+    await repository.delete(seedId2);
+    await settle(tester);
+  });
 }
+
+// 디코딩 가능한 1x1 PNG (Image.file 실제 디코드 경로를 타게 하기 위해 필요)
+final List<int> _onePixelPngBytes = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
+);
