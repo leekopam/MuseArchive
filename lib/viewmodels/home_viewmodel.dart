@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/album.dart';
 import '../models/artist.dart';
 import '../services/i_album_repository.dart';
+import '../utils/korean_search_utils.dart';
 
 // region 열거형 정의
 enum SortOption { custom, artist, title, dateDescending, dateAscending }
@@ -20,6 +22,13 @@ class HomeViewModel extends ChangeNotifier {
   final TextEditingController searchController = TextEditingController();
   //endregion
 
+  // region 지속성 키
+  static const _prefViewMode = 'home_view_mode';
+  static const _prefSortOption = 'home_sort_option';
+  static const _prefRecentSearches = 'home_recent_searches';
+  static const _maxRecentSearches = 8;
+  //endregion
+
   // endregion
 
   // region 상태 필드
@@ -32,16 +41,19 @@ class HomeViewModel extends ChangeNotifier {
   bool isReorderMode = false;
   bool _isPerformingReorder = false;
   ViewMode _viewMode = ViewMode.grid2;
+  List<String> _recentSearches = [];
   //endregion
 
   // endregion
 
   // region Getter 메서드
   bool get isLoading => _isLoading;
+  bool get hasAlbums => _allAlbums.isNotEmpty;
   String get searchQuery => _searchQuery;
   SortOption get sortOption => _sortOption;
   AlbumView get currentView => _currentView;
   ViewMode get viewMode => _viewMode;
+  List<String> get recentSearches => List.unmodifiable(_recentSearches);
   //endregion
 
   // endregion
@@ -50,6 +62,7 @@ class HomeViewModel extends ChangeNotifier {
   HomeViewModel(this._repository) {
     _repository.listenable.addListener(loadAlbums);
     loadAlbums();
+    _restorePreferences();
     searchController.addListener(() {
       if (_searchQuery != searchController.text) {
         setSearchQuery(searchController.text);
@@ -98,9 +111,93 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // region 지속성 (보기 모드·정렬·최근 검색어)
+  /// 플랫폼 채널이 없는 테스트 환경에서도 안전하도록 조용히 무시한다.
+  Future<void> _restorePreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final viewModeIndex = prefs.getInt(_prefViewMode);
+      if (viewModeIndex != null &&
+          viewModeIndex >= 0 &&
+          viewModeIndex < ViewMode.values.length) {
+        _viewMode = ViewMode.values[viewModeIndex];
+      }
+      final sortIndex = prefs.getInt(_prefSortOption);
+      if (sortIndex != null &&
+          sortIndex >= 0 &&
+          sortIndex < SortOption.values.length) {
+        _sortOption = SortOption.values[sortIndex];
+      }
+      _recentSearches = prefs.getStringList(_prefRecentSearches) ?? [];
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _persistViewMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_prefViewMode, _viewMode.index);
+    } catch (_) {}
+  }
+
+  Future<void> _persistSortOption() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_prefSortOption, _sortOption.index);
+    } catch (_) {}
+  }
+
+  /// 지속된 보기 모드·정렬·최근 검색어를 모두 지운다.
+  /// e2e에서 이전 시나리오(또는 이전 실행)의 지속값이 다음 테스트를
+  /// 오염시키지 않도록 각 테스트 시작 전에 호출한다.
+  @visibleForTesting
+  static Future<void> debugClearPersistedState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefViewMode);
+      await prefs.remove(_prefSortOption);
+      await prefs.remove(_prefRecentSearches);
+    } catch (_) {}
+  }
+
+  /// 검색 실행(엔터/제출) 시 최근 검색어에 기록한다
+  void recordSearch(String query) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+    _recentSearches.remove(trimmed);
+    _recentSearches.insert(0, trimmed);
+    if (_recentSearches.length > _maxRecentSearches) {
+      _recentSearches = _recentSearches.sublist(0, _maxRecentSearches);
+    }
+    notifyListeners();
+    _persistRecentSearches();
+  }
+
+  void removeRecentSearch(String query) {
+    if (_recentSearches.remove(query)) {
+      notifyListeners();
+      _persistRecentSearches();
+    }
+  }
+
+  /// 최근 검색어 칩을 탭해 검색을 적용한다
+  void applyRecentSearch(String query) {
+    searchController.text = query;
+    setSearchQuery(query);
+  }
+
+  Future<void> _persistRecentSearches() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_prefRecentSearches, _recentSearches);
+    } catch (_) {}
+  }
+  //endregion
+
   void setSortOption(SortOption option) {
     _sortOption = option;
     notifyListeners();
+    _persistSortOption();
   }
 
   void setView(AlbumView view) {
@@ -119,6 +216,7 @@ class HomeViewModel extends ChangeNotifier {
   void setViewMode(ViewMode mode) {
     _viewMode = mode;
     notifyListeners();
+    _persistViewMode();
   }
 
   void toggleViewMode() {
@@ -130,16 +228,14 @@ class HomeViewModel extends ChangeNotifier {
       _viewMode = ViewMode.grid2;
     }
     notifyListeners();
+    _persistViewMode();
   }
   //endregion
 
   // endregion
 
   // region 앨범 작업
-  Future<void> deleteAlbum(String albumId) async {
-    await _repository.delete(albumId);
-  }
-
+  // 삭제는 deleteAlbumWithUndo(common_widgets)가 스낵바 Undo와 함께 처리한다
   Future<void> toggleWishlistStatus(String albumId) async {
     final album = _allAlbums.firstWhere((a) => a.id == albumId);
     final updatedAlbum = album.copyWith(isWishlist: !album.isWishlist);
@@ -220,17 +316,30 @@ class HomeViewModel extends ChangeNotifier {
       final lowerQuery = _searchQuery.toLowerCase();
       // 별명 포함한 아티스트 검색 결과 가져오기
       final matchedArtists = _repository.getArtistNamesMatching(_searchQuery);
+      // "ㅂㅌㅅ" 같은 초성 검색어일 때만 초성열 매칭을 추가한다
+      final isChoseong = isChoseongQuery(_searchQuery);
 
       filtered = filtered
           .where(
             (album) =>
                 album.title.toLowerCase().contains(lowerQuery) ||
+                // 화면 표시 제목이 한국어 제목인 경우도 검색되어야 한다
+                (album.titleKr?.toLowerCase().contains(lowerQuery) ?? false) ||
                 album.artist.toLowerCase().contains(lowerQuery) ||
                 // 별명 매칭 추가
                 matchedArtists.contains(album.artist) ||
                 album.genres.any((g) => g.toLowerCase().contains(lowerQuery)) ||
                 album.styles.any((s) => s.toLowerCase().contains(lowerQuery)) ||
-                album.formats.any((f) => f.toLowerCase().contains(lowerQuery)),
+                album.formats.any(
+                  (f) => f.toLowerCase().contains(lowerQuery),
+                ) ||
+                (isChoseong &&
+                    (matchesChoseong(_searchQuery, album.title) ||
+                        matchesChoseong(_searchQuery, album.titleKr ?? '') ||
+                        matchesChoseong(_searchQuery, album.artist) ||
+                        album.genres.any(
+                          (g) => matchesChoseong(_searchQuery, g),
+                        ))),
           )
           .toList();
     }

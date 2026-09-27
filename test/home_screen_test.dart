@@ -74,13 +74,31 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(CupertinoSearchTextField), findsOneWidget);
 
-      await tester.enterText(
-        find.byType(CupertinoSearchTextField),
-        'alpha',
-      );
+      await tester.enterText(find.byType(CupertinoSearchTextField), 'alpha');
       await tester.pumpAndSettle();
 
       expect(find.text('Alpha Song'), findsOneWidget);
+      expect(find.text('Beta Beat'), findsNothing);
+    });
+
+    testWidgets('S01 한국어 제목(titleKr)으로도 검색된다', (tester) async {
+      repository = FakeAlbumRepository(
+        albums: [
+          Album(id: 's1', title: 'Neon', titleKr: '네온', artists: const ['A']),
+          Album(id: 's2', title: 'Beta Beat', artists: const ['B']),
+        ],
+      );
+      viewModel = HomeViewModel(repository);
+      await openHome(tester);
+
+      await tester.tap(find.byTooltip('검색'));
+      await tester.pumpAndSettle();
+
+      // 표시 문자열은 영문 title이지만 검색은 titleKr로도 매칭되어야 한다
+      await tester.enterText(find.byType(CupertinoSearchTextField), '네온');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Neon'), findsOneWidget);
       expect(find.text('Beta Beat'), findsNothing);
     });
 
@@ -120,9 +138,7 @@ void main() {
       );
     });
 
-    testWidgets('S02 보기 모드 버튼이 grid2→grid3→artists로 순환한다', (
-      tester,
-    ) async {
+    testWidgets('S02 보기 모드 버튼이 grid2→grid3→artists로 순환한다', (tester) async {
       repository = FakeAlbumRepository(
         albums: [
           Album(id: 'v1', title: 'View One', artists: const ['Singer A']),
@@ -144,12 +160,38 @@ void main() {
       expect(viewModel.viewMode, ViewMode.artists);
       // 아티스트 뷰는 이름순 ListTile 목록이다
       expect(find.text('Singer A'), findsOneWidget);
-      expect(find.text('1 Albums'), findsNWidgets(2));
+      expect(find.text('앨범 1장'), findsNWidgets(2));
 
       await tester.tap(find.byTooltip('2열 그리드로 보기'));
       await tester.pumpAndSettle();
       expect(viewModel.viewMode, ViewMode.grid2);
       expect(find.text('View One'), findsOneWidget);
+    });
+
+    testWidgets('S02 앨범 카드가 스크린리더에 탭·롱프레스 가능한 버튼으로 노출된다', (tester) async {
+      // _endOfTestVerifications이 addTearDown보다 먼저 실행되므로 본문에서 해제한다
+      final semanticsHandle = tester.ensureSemantics();
+
+      repository = FakeAlbumRepository(
+        albums: [
+          Album(id: 's1', title: 'Alpha Song', artists: const ['Singer A']),
+        ],
+      );
+      viewModel = HomeViewModel(repository);
+      await openHome(tester);
+
+      // 버튼 역할만 선언하고 액션이 없으면 TalkBack 활성화가 동작하지 않는다
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Alpha Song, Singer A 앨범')),
+        matchesSemantics(
+          label: 'Alpha Song, Singer A 앨범',
+          isButton: true,
+          hasTapAction: true,
+          hasLongPressAction: true,
+        ),
+      );
+
+      semanticsHandle.dispose();
     });
 
     testWidgets('S02 재정렬 모드 진입 시 사용자 지정 정렬이 강제된다', (tester) async {

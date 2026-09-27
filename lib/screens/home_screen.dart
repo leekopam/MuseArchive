@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../models/album.dart';
+import '../utils/file_utils.dart';
 import '../viewmodels/home_viewmodel.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/animation_widgets.dart';
@@ -85,7 +86,8 @@ class _HomeScreenState extends State<HomeScreen> {
       extendBodyBehindAppBar: true,
       appBar: _HomeAppBar(viewModel: viewModel, repository: repository),
       body: LoadingOverlay(
-        isLoading: viewModel.isLoading,
+        // 재로드 시 블로킹 오버레이가 깜빡이지 않도록 최초 로드에만 표시한다
+        isLoading: viewModel.isLoading && !viewModel.hasAlbums,
         child: Column(
           children: [
             SizedBox(
@@ -112,6 +114,39 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            // 검색창이 비어 있을 때 최근 검색어를 칩으로 노출한다
+            if (viewModel.isSearching &&
+                viewModel.searchQuery.isEmpty &&
+                viewModel.recentSearches.isNotEmpty)
+              SizedBox(
+                width: double.infinity,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        '최근 검색',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      for (final term in viewModel.recentSearches)
+                        InputChip(
+                          label: Text(term),
+                          onPressed: () => viewModel.applyRecentSearch(term),
+                          onDeleted: () => viewModel.removeRecentSearch(term),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             Expanded(
               child: PageView(
                 controller: _pageController,
@@ -152,9 +187,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case ViewMode.artists:
         return _buildArtistList(context, viewModel, repository, view);
       case ViewMode.grid3:
-        return _buildAlbumGrid(context, viewModel, view, 3);
+        return _buildAlbumGrid(context, viewModel, view, isCompact: true);
       case ViewMode.grid2:
-        return _buildAlbumGrid(context, viewModel, view, 2);
+        return _buildAlbumGrid(context, viewModel, view, isCompact: false);
     }
   }
 
@@ -179,105 +214,140 @@ class _HomeScreenState extends State<HomeScreen> {
     ); // 이름순 정렬
 
     if (uniqueNames.isEmpty && !viewModel.isLoading) {
+      // 검색 중이면 "없음"과 "결과 없음"을 구분해 안내한다
+      if (viewModel.searchQuery.isNotEmpty) {
+        return EmptyState(
+          icon: Icons.search_off,
+          message: '\'${viewModel.searchQuery}\'에 대한 검색 결과가 없습니다.',
+        );
+      }
       return EmptyState(
         icon: Icons.person_off_outlined,
-        message: '아티스트가 없습니다.',
+        message: '등록된 아티스트가 없습니다.\n앨범을 추가하면 아티스트가 여기에 표시됩니다.',
         onAction: () => _navigateToAddScreen(context, view),
         actionLabel: '앨범 추가하기',
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      itemCount: uniqueNames.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        indent: 60,
-        color: Colors.grey.withValues(alpha: 0.2),
-      ),
-      itemBuilder: (context, index) {
-        final artistName = uniqueNames[index];
-        // 앨범 수 계산
-        final albumCount = albums.where((a) => a.artist == artistName).length;
+    return EntryAnimationLimiter(
+      key: const ValueKey('artists'),
+      child: ListView.separated(
+        // 뷰 전환·화면 복귀 시 스크롤 위치를 복원한다
+        key: PageStorageKey('home-artists-${view.name}'),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        itemCount: uniqueNames.length,
+        separatorBuilder: (context, index) => Divider(
+          height: 1,
+          indent: 60,
+          color: Colors.grey.withValues(alpha: 0.2),
+        ),
+        itemBuilder: (context, index) {
+          final artistName = uniqueNames[index];
+          // 앨범 수 계산
+          final albumCount = albums.where((a) => a.artist == artistName).length;
 
-        // 아티스트 정보를 Repository에서 조회 (이미지 확인용)
-        final artist = repository.getArtistByName(artistName);
+          // 아티스트 정보를 Repository에서 조회 (이미지 확인용)
+          final artist = repository.getArtistByName(artistName);
 
-        return FadeSlideIn.staggered(
-          index: index,
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(vertical: 4),
-            leading: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipOval(
-                child:
-                    artist?.imagePath != null &&
-                        File(artist!.imagePath!).existsSync()
-                    ? Image.file(File(artist.imagePath!), fit: BoxFit.cover)
-                    : Container(
-                        color: Colors.grey[300],
-                        child: const Icon(Icons.person, color: Colors.white),
-                      ),
-              ),
-            ),
-            title: Text(
-              artistName,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            subtitle: Text(
-              '$albumCount Albums',
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
-                fontSize: 13,
-              ),
-            ),
-            trailing: const Icon(
-              Icons.chevron_right,
-              color: Colors.grey,
-              size: 20,
-            ),
-            onTap: () {
-              HapticService.lightTap();
-              Navigator.push(
-                context,
-                AnimatedPageRoute(
-                  page: ArtistDetailScreen(artistName: artistName),
+          return FadeSlideIn.staggered(
+            index: index,
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(vertical: 4),
+              leading: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
-        );
-      },
+                child: ClipOval(
+                  child:
+                      artist?.imagePath != null &&
+                          fileExistsSync(artist!.imagePath!)
+                      ? Image.file(
+                          File(artist.imagePath!),
+                          fit: BoxFit.cover,
+                          cacheWidth: 150,
+                        )
+                      : Container(
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.person, color: Colors.white),
+                        ),
+                ),
+              ),
+              title: Text(
+                artistName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              subtitle: Text(
+                '앨범 $albumCount장',
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+                  fontSize: 13,
+                ),
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: Colors.grey,
+                size: 20,
+              ),
+              onTap: () {
+                HapticService.lightTap();
+                Navigator.push(
+                  context,
+                  AnimatedPageRoute(
+                    page: ArtistDetailScreen(artistName: artistName),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 
   Widget _buildAlbumGrid(
     BuildContext context,
     HomeViewModel viewModel,
-    AlbumView view,
-    int crossAxisCount,
-  ) {
+    AlbumView view, {
+    required bool isCompact,
+  }) {
     final albums = viewModel.getAlbumsForView(view);
 
+    // 토글은 "편하게/촘촘하게"를 고르고, 실제 열 수는 카드 최소 너비 기준으로
+    // 화면 폭에 맞춘다. 폰(~400px)은 기존과 같이 2열/3열이 된다.
+    final width = MediaQuery.sizeOf(context).width;
+    final minTileWidth = isCompact ? 120.0 : 170.0;
+    var crossAxisCount = (width / minTileWidth).floor();
+    final minCount = isCompact ? 3 : 2;
+    if (crossAxisCount < minCount) crossAxisCount = minCount;
+
     if (albums.isEmpty && !viewModel.isLoading) {
+      if (viewModel.searchQuery.isNotEmpty) {
+        return EmptyState(
+          icon: Icons.search_off,
+          message: '\'${viewModel.searchQuery}\'에 대한 검색 결과가 없습니다.',
+        );
+      }
       return EmptyState(
         icon: view == AlbumView.collection
             ? Icons.music_note_outlined
             : Icons.favorite_border,
-        message: view == AlbumView.collection ? '앨범이 없습니다.' : '위시리스트가 비었습니다.',
+        message: view == AlbumView.collection
+            ? '아직 저장된 앨범이 없습니다.\n첫 앨범을 추가해 컬렉션을 시작해보세요.'
+            : '위시리스트가 비었습니다.\n나중에 사고 싶은 앨범을 담아보세요.',
         onAction: () => _navigateToAddScreen(context, view),
         actionLabel: '앨범 추가하기',
       );
@@ -289,11 +359,12 @@ class _HomeScreenState extends State<HomeScreen> {
       // 참고: reorderable_grid_view 패키지의 API:
       // ReorderableGridView.builder(itemCount: ..., onReorder: ..., itemBuilder: ...)
       return ReorderableGridView.builder(
+        key: PageStorageKey('home-grid-${view.name}'),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
-          crossAxisSpacing: crossAxisCount == 3 ? 12 : 16,
-          mainAxisSpacing: crossAxisCount == 3 ? 12 : 16,
+          crossAxisSpacing: isCompact ? 12 : 16,
+          mainAxisSpacing: isCompact ? 12 : 16,
           childAspectRatio: 0.75,
         ),
         itemCount: albums.length,
@@ -305,28 +376,33 @@ class _HomeScreenState extends State<HomeScreen> {
           // 키는 재정렬에 중요합니다.
           return KeyedSubtree(
             key: ValueKey(album.id),
-            child: _AlbumCard(album: album, isCompact: crossAxisCount == 3),
+            child: _AlbumCard(album: album, isCompact: isCompact),
           );
         },
       );
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: crossAxisCount == 3 ? 12 : 16,
-        mainAxisSpacing: crossAxisCount == 3 ? 12 : 16,
-        childAspectRatio: 0.75,
+    return EntryAnimationLimiter(
+      key: ValueKey('grid$crossAxisCount'),
+      child: GridView.builder(
+        // 뷰 전환·화면 복귀 시 스크롤 위치를 복원한다
+        key: PageStorageKey('home-grid-${view.name}'),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: isCompact ? 12 : 16,
+          mainAxisSpacing: isCompact ? 12 : 16,
+          childAspectRatio: 0.75,
+        ),
+        itemCount: albums.length,
+        itemBuilder: (context, index) {
+          final album = albums[index];
+          return FadeSlideIn.staggered(
+            index: index,
+            child: _AlbumCard(album: album, isCompact: isCompact),
+          );
+        },
       ),
-      itemCount: albums.length,
-      itemBuilder: (context, index) {
-        final album = albums[index];
-        return FadeSlideIn.staggered(
-          index: index,
-          child: _AlbumCard(album: album, isCompact: crossAxisCount == 3),
-        );
-      },
     );
   }
 }
@@ -347,14 +423,19 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: AppBar(
-          title: viewModel.isSearching
-              ? CupertinoSearchTextField(
-                  controller: viewModel.searchController,
-                  autofocus: true,
-                  onChanged: viewModel.setSearchQuery,
-                  style: TextStyle(color: theme.colorScheme.onSurface),
-                )
-              : const Text('MuseArchive'),
+          title: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: viewModel.isSearching
+                ? CupertinoSearchTextField(
+                    key: const ValueKey('search-field'),
+                    controller: viewModel.searchController,
+                    autofocus: true,
+                    onChanged: viewModel.setSearchQuery,
+                    onSubmitted: viewModel.recordSearch,
+                    style: TextStyle(color: theme.colorScheme.onSurface),
+                  )
+                : const Text('MuseArchive', key: ValueKey('app-title')),
+          ),
           backgroundColor: theme.scaffoldBackgroundColor.withValues(
             alpha: 0.85,
           ),
@@ -415,9 +496,7 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           case 'all_songs':
             Navigator.push(
               context,
-              AnimatedPageRoute(
-                page: AllSongsScreen(repository: repository),
-              ),
+              AnimatedPageRoute(page: AllSongsScreen(repository: repository)),
             );
             break;
           case 'settings':
@@ -487,24 +566,54 @@ class _AlbumCard extends StatelessWidget {
     // 재정렬 모드인 경우 ReorderableGridView가 사용할 수 있도록 사용자 지정 onLongPress를 비활성화합니다.
     final canShowMenu = !viewModel.isReorderMode;
 
+    void openDetail() async {
+      HapticService.lightTap();
+      final result = await Navigator.push(
+        context,
+        AnimatedPageRoute(page: DetailScreen(album: album)),
+      );
+      if (result == true) {
+        viewModel.loadAlbums();
+      }
+    }
+
+    void openMenu() {
+      HapticService.dragStart();
+      _showMoveAlbumSheet(context, album, viewModel);
+    }
+
+    final artistLabel = album.artists.join(', ');
+    return Semantics(
+      label: artistLabel.isEmpty
+          ? '${album.title} 앨범'
+          : '${album.title}, $artistLabel 앨범',
+      button: true,
+      // 스크린리더 활성화 액션이 실제 카드 제스처와 동일하게 동작하도록 연결한다
+      onTap: openDetail,
+      onLongPress: canShowMenu ? openMenu : null,
+      child: ExcludeSemantics(
+        child: _buildCard(
+          context,
+          viewModel,
+          canShowMenu,
+          openDetail,
+          openMenu,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    HomeViewModel viewModel,
+    bool canShowMenu,
+    VoidCallback onOpenDetail,
+    VoidCallback onOpenMenu,
+  ) {
     return TapScaleWrapper(
       enabled: canShowMenu,
-      onTap: () async {
-        HapticService.lightTap();
-        final result = await Navigator.push(
-          context,
-          AnimatedPageRoute(page: DetailScreen(album: album)),
-        );
-        if (result == true) {
-          viewModel.loadAlbums();
-        }
-      },
-      onLongPress: canShowMenu
-          ? () {
-              HapticService.dragStart();
-              _showMoveAlbumSheet(context, album, viewModel);
-            }
-          : null,
+      onTap: onOpenDetail,
+      onLongPress: canShowMenu ? onOpenMenu : null,
       child: Card(
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
@@ -549,6 +658,21 @@ class _AlbumCard extends StatelessWidget {
             child: SafeArea(
               child: Wrap(
                 children: <Widget>[
+                  // 시트 배경이 투명해 기본 showDragHandle이 카드 밖에
+                  // 뜨므로, 카드 안쪽에 핸들을 직접 그린다
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 10),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.4,
+                        ),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Text(
@@ -598,40 +722,21 @@ class _AlbumCard extends StatelessWidget {
                       '앨범 삭제',
                       style: TextStyle(color: Colors.red),
                     ),
-                    onTap: () {
+                    onTap: () async {
                       HapticService.warning();
                       Navigator.pop(builderContext);
-                      showDialog(
-                        context: context,
-                        builder: (dialogContext) {
-                          return AlertDialog(
-                            title: const Text('앨범 삭제'),
-                            content: const Text('정말로 이 앨범을 삭제하시겠습니까?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(dialogContext),
-                                child: const Text('취소'),
-                              ),
-                              TextButton(
-                                onPressed: () async {
-                                  Navigator.pop(dialogContext);
-                                  await viewModel.deleteAlbum(album.id);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('앨범이 삭제되었습니다.'),
-                                      ),
-                                    );
-                                  }
-                                },
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                ),
-                                child: const Text('삭제'),
-                              ),
-                            ],
-                          );
-                        },
+                      final confirm = await ConfirmDialog.show(
+                        context,
+                        title: '앨범 삭제',
+                        content: '정말로 이 앨범을 삭제하시겠습니까?',
+                        confirmText: '삭제',
+                        isDestructive: true,
+                      );
+                      if (!confirm || !context.mounted) return;
+                      await deleteAlbumWithUndo(
+                        context.read<IAlbumRepository>(),
+                        album,
+                        ScaffoldMessenger.of(context),
                       );
                     },
                   ),
@@ -653,8 +758,12 @@ class _AlbumCard extends StatelessWidget {
   Widget _buildAlbumImage() {
     return Hero(
       tag: 'album-cover-${album.id}',
-      child: (album.imagePath != null && File(album.imagePath!).existsSync())
-          ? Image.file(File(album.imagePath!), fit: BoxFit.cover)
+      child: (album.imagePath != null && fileExistsSync(album.imagePath!))
+          ? Image.file(
+              File(album.imagePath!),
+              fit: BoxFit.cover,
+              cacheWidth: 600,
+            )
           : Container(
               color: const Color(0xFF1E1E2C),
               child: const Center(
@@ -713,94 +822,11 @@ class _AlbumCard extends StatelessWidget {
   }
 
   Widget _buildFormatBadge(bool isCompact) {
-    const formatColors = {
-      'LP': Color(0xFFD4AF37), // 메탈릭 골드
-      'CD': Color(0xFF607D8B), // 블루 그레이 (프리미엄 실버 룩)
-      'DVD': Color(0xFF8E24AA), // 퍼플 (프리미엄)
-      'Blu-ray': Color(0xFF2962FF), // 비비드 블루
-    };
-    final formatPriority = ['LP', 'CD', 'DVD', 'Blu-ray'];
-
-    List<Widget> badges = [];
-
-    // vinyl은 LP로 매핑
-    const formatAliases = {
-      'LP': ['lp', 'vinyl'],
-    };
-
-    for (final format in formatPriority) {
-      final aliases = formatAliases[format];
-      if (album.formats.any((f) {
-        final lower = f.toLowerCase();
-        if (aliases != null) {
-          return aliases.any((alias) => lower.contains(alias));
-        }
-        return lower.contains(format.toLowerCase());
-      })) {
-        badges.add(
-          _Badge(
-            label: format,
-            color: formatColors[format]!,
-            isCompact: isCompact,
-          ),
-        );
-      }
-    }
-
-    if (badges.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
+    if (album.formats.isEmpty) return const SizedBox.shrink();
     return Positioned(
       top: isCompact ? 4 : 8,
       left: isCompact ? 4 : 8,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: badges,
-      ),
-    );
-  }
-}
-// endregion
-
-// region 배지 위젯
-class _Badge extends StatelessWidget {
-  const _Badge({
-    required this.label,
-    required this.color,
-    this.isCompact = false,
-  });
-
-  final String label;
-  final Color color;
-  final bool isCompact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: EdgeInsets.symmetric(
-        horizontal: isCompact ? 4 : 6,
-        vertical: isCompact ? 1 : 2,
-      ),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(4),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: isCompact ? 2 : 3,
-          ),
-        ],
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: isCompact ? 8 : 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+      child: AlbumFormatBadges(formats: album.formats, isCompact: isCompact),
     );
   }
 }
@@ -821,6 +847,7 @@ void _navigateToAddScreen(BuildContext context, AlbumView currentView) {
 void _showSortOptions(BuildContext context, HomeViewModel viewModel) async {
   final selected = await showModalBottomSheet<SortOption>(
     context: context,
+    showDragHandle: true,
     builder: (context) {
       return SafeArea(
         child: Column(
