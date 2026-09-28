@@ -27,6 +27,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late PageController _pageController;
+  final Map<AlbumView, String> _selectedAlbumIds = {};
 
   // region 라이프사이클
   @override
@@ -183,6 +184,11 @@ class _HomeScreenState extends State<HomeScreen> {
     AlbumView view,
   ) {
     switch (viewModel.viewMode) {
+      case ViewMode.listPreview:
+        if (viewModel.isReorderMode) {
+          return _buildAlbumGrid(context, viewModel, view, isCompact: false);
+        }
+        return _buildListPreview(context, viewModel, view);
       case ViewMode.artists:
         return _buildArtistList(context, viewModel, repository, view);
       case ViewMode.grid3:
@@ -190,6 +196,76 @@ class _HomeScreenState extends State<HomeScreen> {
       case ViewMode.grid2:
         return _buildAlbumGrid(context, viewModel, view, isCompact: false);
     }
+  }
+
+  Widget _buildListPreview(
+    BuildContext context,
+    HomeViewModel viewModel,
+    AlbumView view,
+  ) {
+    final albums = viewModel.getAlbumsForView(view);
+    if (albums.isEmpty) {
+      return _buildAlbumGrid(context, viewModel, view, isCompact: false);
+    }
+
+    final selectedId = _selectedAlbumIds[view];
+    final selected = albums.firstWhere(
+      (album) => album.id == selectedId,
+      orElse: () => albums.first,
+    );
+    final others = albums.where((album) => album.id != selected.id).toList();
+    final theme = Theme.of(context);
+
+    return ListView.builder(
+      key: PageStorageKey('home-preview-${view.name}'),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
+      itemCount: others.length + 1,
+      itemBuilder: (context, index) {
+        if (index > 0) {
+          final album = others[index - 1];
+          return _AlbumPreviewRow(
+            album: album,
+            onSelect: () => setState(() => _selectedAlbumIds[view] = album.id),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('앨범 목록', style: theme.textTheme.headlineLarge),
+            const SizedBox(height: 6),
+            Text(
+              '${albums.length}장 · ${_getSortOptionText(viewModel.sortOption)}',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 20),
+            AnimatedSwitcher(
+              duration: reduceMotionEnabled
+                  ? Duration.zero
+                  : const Duration(milliseconds: 140),
+              switchInCurve: Curves.easeOut,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.965, end: 1).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: _AlbumPreviewCard(
+                key: ValueKey('album-preview-${selected.id}'),
+                album: selected,
+              ),
+            ),
+            if (others.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              Text('다른 앨범', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+            ],
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildArtistList(
@@ -451,21 +527,25 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
             IconButton(
               icon: Icon(
-                viewModel.viewMode == ViewMode.grid2
+                viewModel.viewMode == ViewMode.listPreview
+                    ? Icons.grid_view_rounded
+                    : viewModel.viewMode == ViewMode.grid2
                     ? Icons.grid_3x3_rounded
                     : viewModel.viewMode == ViewMode.grid3
                     ? Icons.people_alt_outlined
-                    : Icons.grid_view_rounded,
+                    : Icons.view_list_rounded,
               ),
               onPressed: () {
                 HapticService.toggle();
                 viewModel.toggleViewMode();
               },
-              tooltip: viewModel.viewMode == ViewMode.grid2
+              tooltip: viewModel.viewMode == ViewMode.listPreview
+                  ? '2열 그리드로 보기'
+                  : viewModel.viewMode == ViewMode.grid2
                   ? '3열 그리드로 보기'
                   : viewModel.viewMode == ViewMode.grid3
                   ? '아티스트 목록으로 보기'
-                  : '2열 그리드로 보기',
+                  : '목록과 미리보기로 보기',
             ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
@@ -543,6 +623,207 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
 }
 // endregion
 
+class _AlbumPreviewCard extends StatelessWidget {
+  const _AlbumPreviewCard({super.key, required this.album});
+
+  final Album album;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final viewModel = context.read<HomeViewModel>();
+
+    void openDetail() async {
+      HapticService.lightTap();
+      final result = await Navigator.push(
+        context,
+        AnimatedPageRoute(page: DetailScreen(album: album)),
+      );
+      if (result == true) viewModel.loadAlbums();
+    }
+
+    void openMenu() {
+      HapticService.dragStart();
+      _AlbumCard.showMoveAlbumSheet(context, album, viewModel);
+    }
+
+    return Semantics(
+      label: '${album.title}, ${album.artist} 앨범 미리보기',
+      button: true,
+      onTap: openDetail,
+      onLongPress: openMenu,
+      child: TapScaleWrapper(
+        onTap: openDetail,
+        onLongPress: openMenu,
+        child: Card(
+          margin: EdgeInsets.zero,
+          color: theme.colorScheme.surfaceContainerLow,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _AlbumPreviewCover(album: album, size: 105, hero: true),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        album.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        album.artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (album.releaseDateString.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          album.releaseDateString,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      TextButton(
+                        onPressed: openDetail,
+                        child: const Text('상세 보기'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AlbumPreviewRow extends StatelessWidget {
+  const _AlbumPreviewRow({required this.album, required this.onSelect});
+
+  final Album album;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final viewModel = context.read<HomeViewModel>();
+
+    void select() {
+      HapticService.selection();
+      onSelect();
+    }
+
+    void openMenu() {
+      HapticService.dragStart();
+      _AlbumCard.showMoveAlbumSheet(context, album, viewModel);
+    }
+
+    return Semantics(
+      label: '${album.title}, ${album.artist} 앨범 미리보기 선택',
+      button: true,
+      onTap: select,
+      onLongPress: openMenu,
+      child: TapScaleWrapper(
+        onTap: select,
+        onLongPress: openMenu,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(
+            children: [
+              _AlbumPreviewCover(album: album, size: 48),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      album.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      album.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AlbumPreviewCover extends StatelessWidget {
+  const _AlbumPreviewCover({
+    required this.album,
+    required this.size,
+    this.hero = false,
+  });
+
+  final Album album;
+  final double size;
+  final bool hero;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget cover = ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox.square(
+        dimension: size,
+        child: album.imagePath != null && fileExistsSync(album.imagePath!)
+            ? Image.file(
+                File(album.imagePath!),
+                fit: BoxFit.cover,
+                cacheWidth: 400,
+              )
+            : ColoredBox(
+                color: scheme.surfaceContainerHighest,
+                child: Icon(
+                  Icons.album_outlined,
+                  color: scheme.primary,
+                  size: size * 0.42,
+                ),
+              ),
+      ),
+    );
+    if (hero) cover = Hero(tag: 'album-cover-${album.id}', child: cover);
+    return cover;
+  }
+}
+
 // region 앨범 카드 위젯
 class _AlbumCard extends StatelessWidget {
   const _AlbumCard({required this.album, this.isCompact = false});
@@ -579,7 +860,7 @@ class _AlbumCard extends StatelessWidget {
 
     void openMenu() {
       HapticService.dragStart();
-      _showMoveAlbumSheet(context, album, viewModel);
+      showMoveAlbumSheet(context, album, viewModel);
     }
 
     final artistLabel = album.artists.join(', ');
@@ -633,7 +914,7 @@ class _AlbumCard extends StatelessWidget {
     );
   }
 
-  void _showMoveAlbumSheet(
+  static void showMoveAlbumSheet(
     BuildContext context,
     Album album,
     HomeViewModel viewModel,

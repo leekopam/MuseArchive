@@ -10,7 +10,7 @@ enum SortOption { custom, artist, title, dateDescending, dateAscending }
 
 enum AlbumView { collection, wishlist }
 
-enum ViewMode { grid2, grid3, artists }
+enum ViewMode { grid2, grid3, artists, listPreview }
 //endregion
 
 /// 홈 화면 뷰모델
@@ -40,7 +40,7 @@ class HomeViewModel extends ChangeNotifier {
   AlbumView _currentView = AlbumView.collection;
   bool isReorderMode = false;
   bool _isPerformingReorder = false;
-  ViewMode _viewMode = ViewMode.grid2;
+  ViewMode _viewMode = ViewMode.listPreview;
   List<String> _recentSearches = [];
   //endregion
 
@@ -220,12 +220,14 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   void toggleViewMode() {
-    if (_viewMode == ViewMode.grid2) {
+    if (_viewMode == ViewMode.listPreview) {
+      _viewMode = ViewMode.grid2;
+    } else if (_viewMode == ViewMode.grid2) {
       _viewMode = ViewMode.grid3;
     } else if (_viewMode == ViewMode.grid3) {
       _viewMode = ViewMode.artists;
     } else {
-      _viewMode = ViewMode.grid2;
+      _viewMode = ViewMode.listPreview;
     }
     notifyListeners();
     _persistViewMode();

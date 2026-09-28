@@ -33,6 +33,46 @@ void main() {
     Offset topLeftOf(WidgetTester tester, String title) =>
         tester.getTopLeft(find.text(title));
 
+    testWidgets('S01 I 목록에서 앨범 선택 시 미리보기가 바뀌고 위시리스트도 표시된다', (tester) async {
+      tester.view.physicalSize = const Size(360, 600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      repository = FakeAlbumRepository(
+        albums: [
+          Album(id: 'a', title: 'Preview A', artists: const ['Artist A']),
+          Album(id: 'b', title: 'Preview B', artists: const ['Artist B']),
+          Album(
+            id: 'w',
+            title: 'Wish Preview',
+            artists: const ['Artist W'],
+            isWishlist: true,
+          ),
+        ],
+      );
+      viewModel = HomeViewModel(repository);
+      await openHome(tester);
+
+      expect(find.text('앨범 목록'), findsOneWidget);
+      expect(find.byKey(const ValueKey('album-preview-a')), findsOneWidget);
+      await tester.tap(find.text('Preview B'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('album-preview-b')), findsOneWidget);
+
+      await tester.tap(find.byTooltip('검색'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(CupertinoSearchTextField), 'Preview A');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('album-preview-a')), findsOneWidget);
+      await tester.tap(find.byTooltip('검색'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('위시리스트'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('album-preview-w')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('S01 세그먼트 전환으로 컬렉션/위시리스트 목록이 교체된다', (tester) async {
       repository = FakeAlbumRepository(
         albums: [
@@ -115,6 +155,7 @@ void main() {
         ],
       );
       viewModel = HomeViewModel(repository);
+      viewModel.setViewMode(ViewMode.grid2);
       await openHome(tester);
 
       // 사용자 지정(입력 순서) 상태에서는 Zebra가 Apple보다 왼쪽에 있다
@@ -140,7 +181,7 @@ void main() {
       );
     });
 
-    testWidgets('S02 보기 모드 버튼이 grid2→grid3→artists로 순환한다', (tester) async {
+    testWidgets('S02 보기 모드 버튼이 목록→grid2→grid3→artists로 순환한다', (tester) async {
       repository = FakeAlbumRepository(
         albums: [
           Album(id: 'v1', title: 'View One', artists: const ['Singer A']),
@@ -150,6 +191,10 @@ void main() {
       viewModel = HomeViewModel(repository);
       await openHome(tester);
 
+      expect(viewModel.viewMode, ViewMode.listPreview);
+
+      await tester.tap(find.byTooltip('2열 그리드로 보기'));
+      await tester.pumpAndSettle();
       expect(viewModel.viewMode, ViewMode.grid2);
       expect(find.byType(GridView), findsWidgets);
 
@@ -164,9 +209,9 @@ void main() {
       expect(find.text('Singer A'), findsOneWidget);
       expect(find.text('앨범 1장'), findsNWidgets(2));
 
-      await tester.tap(find.byTooltip('2열 그리드로 보기'));
+      await tester.tap(find.byTooltip('목록과 미리보기로 보기'));
       await tester.pumpAndSettle();
-      expect(viewModel.viewMode, ViewMode.grid2);
+      expect(viewModel.viewMode, ViewMode.listPreview);
       expect(find.text('View One'), findsOneWidget);
     });
 
@@ -180,6 +225,7 @@ void main() {
         ],
       );
       viewModel = HomeViewModel(repository);
+      viewModel.setViewMode(ViewMode.grid2);
       await openHome(tester);
 
       // 버튼 역할만 선언하고 액션이 없으면 TalkBack 활성화가 동작하지 않는다

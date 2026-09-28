@@ -64,6 +64,69 @@ void main() {
   // 예: 이미지 시나리오가 아티스트 뷰에서 끝나면 검색 시나리오가 목록 뷰로 시작해 실패한다.
   setUp(HomeViewModel.debugClearPersistedState);
 
+  testWidgets('S01 I 목록 선택 → 미리보기 → 상세 화면', (tester) async {
+    app.main();
+    await settle(tester);
+
+    final repository = tester
+        .element(find.byType(HomeScreen))
+        .read<IAlbumRepository>();
+    const firstId = 'e2e-preview-a';
+    const secondId = 'e2e-preview-b';
+    for (final id in [firstId, secondId]) {
+      if ((await repository.getAll()).any((album) => album.id == id)) {
+        await repository.delete(id);
+      }
+    }
+
+    try {
+      await repository.add(
+        Album(id: firstId, title: 'E2E Preview A', artists: const [seedArtist]),
+      );
+      await repository.add(
+        Album(
+          id: secondId,
+          title: 'E2E Preview B',
+          artists: const [seedArtist],
+        ),
+      );
+      await settle(tester);
+
+      await tester.tap(find.byTooltip('검색'));
+      await settle(tester);
+      await tester.enterText(
+        find.byType(CupertinoSearchTextField),
+        'E2E Preview',
+      );
+      await settle(tester);
+
+      expect(
+        find.byKey(const ValueKey('album-preview-$firstId')),
+        findsOneWidget,
+      );
+      FocusManager.instance.primaryFocus?.unfocus();
+      await settle(tester);
+      await tester.ensureVisible(find.text('E2E Preview B'));
+      await tester.tap(find.text('E2E Preview B'));
+      await settle(tester);
+      expect(
+        find.byKey(const ValueKey('album-preview-$secondId')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, '상세 보기'));
+      await settle(tester);
+      expect(find.byType(DetailScreen), findsOneWidget);
+      expect(find.text('E2E Preview B'), findsWidgets);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+      expect(find.byType(HomeScreen), findsOneWidget);
+    } finally {
+      await repository.delete(firstId);
+      await repository.delete(secondId);
+    }
+  });
+
   testWidgets('S01·S07 홈 표시 → 상세 진입 → 삭제 왕복', (tester) async {
     app.main();
     await settle(tester);
@@ -177,6 +240,9 @@ void main() {
       await repository.add(
         Album(id: appleId, title: appleTitle, artists: const [seedArtist]),
       );
+      await settle(tester);
+
+      await tester.tap(find.byTooltip('2열 그리드로 보기'));
       await settle(tester);
 
       await tester.tap(find.byType(PopupMenuButton<String>));
@@ -521,7 +587,9 @@ void main() {
     expect(artist!.imagePath, contains('artist_images'));
     expect(await File(artist.imagePath!).exists(), isTrue);
 
-    // 보기 모드 grid2 → grid3 → artists
+    // 보기 모드 목록 → grid2 → grid3 → artists
+    await tester.tap(find.byTooltip('2열 그리드로 보기'));
+    await settle(tester);
     await tester.tap(find.byTooltip('3열 그리드로 보기'));
     await settle(tester);
     await tester.tap(find.byTooltip('아티스트 목록으로 보기'));
