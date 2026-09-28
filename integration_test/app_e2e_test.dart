@@ -151,6 +151,78 @@ void main() {
     }
   });
 
+  testWidgets('S01·S02 홈 정렬·보기 설정이 화면 이동 후 유지된다', (tester) async {
+    app.main();
+    await settle(tester);
+
+    const zebraId = 'e2e-sort-zebra';
+    const appleId = 'e2e-sort-apple';
+    const zebraTitle = 'E2E Sort Zebra';
+    const appleTitle = 'E2E Sort Apple';
+    final context = tester.element(find.byType(HomeScreen));
+    final repository = context.read<IAlbumRepository>();
+    final viewModel = context.read<HomeViewModel>();
+    final prefs = await SharedPreferences.getInstance();
+
+    for (final id in [zebraId, appleId]) {
+      if ((await repository.getAll()).any((album) => album.id == id)) {
+        await repository.delete(id);
+      }
+    }
+
+    try {
+      await repository.add(
+        Album(id: zebraId, title: zebraTitle, artists: const [seedArtist]),
+      );
+      await repository.add(
+        Album(id: appleId, title: appleTitle, artists: const [seedArtist]),
+      );
+      await settle(tester);
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await settle(tester);
+      await tester.tap(find.text('정렬'));
+      await settle(tester);
+      await tester.tap(find.text('앨범명'));
+      await settle(tester);
+
+      final appleCard = find.widgetWithText(TapScaleWrapper, appleTitle);
+      final zebraCard = find.widgetWithText(TapScaleWrapper, zebraTitle);
+      expect(appleCard, findsOneWidget);
+      expect(zebraCard, findsOneWidget);
+      expect(
+        tester.getTopLeft(appleCard).dx,
+        lessThan(tester.getTopLeft(zebraCard).dx),
+      );
+      expect(viewModel.sortOption, SortOption.title);
+      expect(prefs.getInt('home_sort_option'), SortOption.title.index);
+
+      await tester.tap(find.byTooltip('3열 그리드로 보기'));
+      await settle(tester);
+      expect(viewModel.viewMode, ViewMode.grid3);
+      expect(prefs.getInt('home_view_mode'), ViewMode.grid3.index);
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await settle(tester);
+      await tester.tap(find.text('설정'));
+      await settle(tester);
+      await tester.binding.handlePopRoute();
+      await settle(tester);
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(viewModel.sortOption, SortOption.title);
+      expect(viewModel.viewMode, ViewMode.grid3);
+      expect(
+        tester.getTopLeft(appleCard).dx,
+        lessThan(tester.getTopLeft(zebraCard).dx),
+      );
+    } finally {
+      await repository.delete(zebraId);
+      await repository.delete(appleId);
+      await HomeViewModel.debugClearPersistedState();
+    }
+  });
+
   testWidgets('S12 설정 다크 모드 → 홈 회색 테마 → 저장값 복원', (tester) async {
     app.main();
     await settle(tester);
