@@ -103,8 +103,8 @@ void main() {
     });
 
     testWidgets('S01 정렬 옵션 변경이 그리드 내 앨범 순서를 바꾼다', (tester) async {
-      // 정렬 바텀시트가 기본 테스트 뷰포트(800x600)에서 넘치지 않도록 실기 크기로 맞춘다
-      tester.view.physicalSize = const Size(1080, 2400);
+      // 작은 휴대폰에서도 정렬 시트의 마지막 항목까지 접근 가능해야 한다.
+      tester.view.physicalSize = const Size(360, 600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
@@ -128,6 +128,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('정렬'));
       await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.text('앨범명'));
       await tester.tap(find.text('앨범명'));
       await tester.pumpAndSettle();
 

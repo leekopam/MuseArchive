@@ -850,46 +850,48 @@ void _showSortOptions(BuildContext context, HomeViewModel viewModel) async {
     showDragHandle: true,
     builder: (context) {
       return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                '정렬 순서',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-            ...SortOption.values.map((option) {
-              return ListTile(
-                leading: Icon(
-                  _getSortOptionIcon(option),
-                  color: viewModel.sortOption == option
-                      ? Theme.of(context).colorScheme.primary
-                      : null,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  '정렬 순서',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                title: Text(
-                  _getSortOptionText(option),
-                  style: TextStyle(
-                    fontWeight: viewModel.sortOption == option
-                        ? FontWeight.bold
-                        : null,
+              ),
+              ...SortOption.values.map((option) {
+                return ListTile(
+                  leading: Icon(
+                    _getSortOptionIcon(option),
                     color: viewModel.sortOption == option
                         ? Theme.of(context).colorScheme.primary
                         : null,
                   ),
-                ),
-                trailing: viewModel.sortOption == option
-                    ? Icon(
-                        Icons.check,
-                        color: Theme.of(context).colorScheme.primary,
-                      )
-                    : null,
-                onTap: () => Navigator.pop(context, option),
-              );
-            }),
-            const SizedBox(height: 12),
-          ],
+                  title: Text(
+                    _getSortOptionText(option),
+                    style: TextStyle(
+                      fontWeight: viewModel.sortOption == option
+                          ? FontWeight.bold
+                          : null,
+                      color: viewModel.sortOption == option
+                          ? Theme.of(context).colorScheme.primary
+                          : null,
+                    ),
+                  ),
+                  trailing: viewModel.sortOption == option
+                      ? Icon(
+                          Icons.check,
+                          color: Theme.of(context).colorScheme.primary,
+                        )
+                      : null,
+                  onTap: () => Navigator.pop(context, option),
+                );
+              }),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       );
     },
