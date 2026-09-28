@@ -11,6 +11,12 @@ import 'package:my_album_app/services/i_album_repository.dart';
 
 /// 인메모리 저장소. widget 테스트에서 실제 Hive IO를 제거해 fakeAsync와 충돌하지 않는다.
 class FakeAlbumRepository implements IAlbumRepository {
+  @override
+  String? get lastBackupRestoreError => null;
+
+  @override
+  int get lastBackupSkippedCount => 0;
+
   FakeAlbumRepository({List<Album>? albums, List<Artist>? artists})
     : albums = List.of(albums ?? const []),
       _artists = {

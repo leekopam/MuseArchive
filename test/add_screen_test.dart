@@ -1980,6 +1980,12 @@ class _AddScreenLauncher extends StatelessWidget {
 }
 
 class _FakeAlbumRepository implements IAlbumRepository {
+  @override
+  String? get lastBackupRestoreError => null;
+
+  @override
+  int get lastBackupSkippedCount => 0;
+
   _FakeAlbumRepository({this.addFailure});
 
   final ValueNotifier<Object?> _listenable = ValueNotifier<Object?>(null);

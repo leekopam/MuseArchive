@@ -291,9 +291,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final success = await _repository.importBackup();
       if (mounted) {
         if (success) {
-          SuccessSnackBar.show(context, '백업이 복원되었습니다.');
+          final skipped = _repository.lastBackupSkippedCount;
+          SuccessSnackBar.show(
+            context,
+            skipped > 0
+                ? '백업이 복원되었습니다. (호환되지 않는 $skipped개 항목 제외)'
+                : '백업이 복원되었습니다.',
+          );
         } else {
-          ErrorSnackBar.show(context, '백업 복원에 실패했습니다.');
+          final reason = _repository.lastBackupRestoreError;
+          ErrorSnackBar.show(
+            context,
+            reason == null || reason.isEmpty
+                ? '백업 복원에 실패했습니다.'
+                : '백업 복원에 실패했습니다. ($reason)',
+          );
         }
       }
     } catch (e) {

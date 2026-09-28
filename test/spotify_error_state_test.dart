@@ -271,6 +271,12 @@ Future<http.Response> _unexpectedDiscogsGet(
 }
 
 class _FakeAlbumRepository implements IAlbumRepository {
+  @override
+  String? get lastBackupRestoreError => null;
+
+  @override
+  int get lastBackupSkippedCount => 0;
+
   final ValueNotifier<Object?> _listenable = ValueNotifier<Object?>(null);
 
   @override

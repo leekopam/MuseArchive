@@ -54,5 +54,11 @@ abstract class IAlbumRepository {
   Future<bool> shareBackup();
   Future<bool> saveBackupToDevice();
   Future<bool> importBackup();
+
+  /// 마지막 복원 시도의 실패 사유(사용자 표시용). 실패한 적이 없으면 null.
+  String? get lastBackupRestoreError => null;
+
+  /// 마지막 복원에서 스키마 불일치로 건너뛴 항목 수.
+  int get lastBackupSkippedCount => 0;
   //endregion
 }

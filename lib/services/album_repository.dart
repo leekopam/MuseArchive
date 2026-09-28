@@ -35,6 +35,19 @@ class AlbumRepository implements IAlbumRepository {
   @visibleForTesting
   SaveBackupFile saveBackupFile = _defaultSaveBackupFile;
 
+  /// 마지막 복원 시도의 실패 사유(사용자 표시용). 성공 시 null.
+  @override
+  String? get lastBackupRestoreError => _lastBackupRestoreError;
+  String? _lastBackupRestoreError;
+
+  /// 마지막 복원에서 스키마 불일치로 건너뛴 항목 수.
+  @override
+  int get lastBackupSkippedCount => _lastBackupSkippedCount;
+  int _lastBackupSkippedCount = 0;
+
+  @protected
+  set lastBackupSkippedCount(int value) => _lastBackupSkippedCount = value;
+
   // region constants
   static const String _boxName = 'albumBox';
   static const String _artistBoxName = 'artistBox';
@@ -719,6 +732,8 @@ class AlbumRepository implements IAlbumRepository {
 
   @override
   Future<bool> importBackup() async {
+    _lastBackupRestoreError = null;
+    _lastBackupSkippedCount = 0;
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -728,7 +743,10 @@ class AlbumRepository implements IAlbumRepository {
       if (result == null || result.files.isEmpty) return false;
 
       final zipPath = result.files.first.path;
-      if (zipPath == null) return false;
+      if (zipPath == null) {
+        _lastBackupRestoreError = '파일 경로를 읽을 수 없습니다.';
+        return false;
+      }
 
       final tempDir = await getTemporaryDirectory();
       final appDir = await getApplicationDocumentsDirectory();
@@ -736,6 +754,7 @@ class AlbumRepository implements IAlbumRepository {
       return importBackupFromZipPath(zipPath, tempDir: tempDir, appDir: appDir);
     } catch (e) {
       debugPrint('Backup restore failed: $e');
+      _lastBackupRestoreError = '파일 선택 중 오류가 발생했습니다.';
       return false;
     }
   }
@@ -779,24 +798,25 @@ class AlbumRepository implements IAlbumRepository {
       // 추출이 끝나기 전에 스테이징하면 이미지 해석이 누락된다
       await extractArchiveToDisk(archive, extractDir.path);
 
-      final albumsFile = File('${extractDir.path}/albums.json');
-      if (!await albumsFile.exists()) {
-        throw Exception('Backup file is missing or corrupted.');
+      // 구버전·재압축 zip에서 albums.json이 하위 폴더에 있을 수 있다
+      final albumsFile = findBackupJsonFile(extractDir, 'albums.json');
+      if (albumsFile == null) {
+        throw Exception('백업 파일에서 albums.json을 찾을 수 없습니다.');
+      }
+      final backupRoot = albumsFile.parent;
+
+      final albumsJsonRaw = decodeBackupList(await albumsFile.readAsString());
+      if (albumsJsonRaw == null) {
+        throw Exception('앨범 백업 데이터 형식이 올바르지 않습니다.');
       }
 
-      final albumsJsonRaw = jsonDecode(await albumsFile.readAsString());
-      if (albumsJsonRaw is! List) {
-        throw Exception('Invalid album backup format.');
-      }
-
-      final artistsFile = File('${extractDir.path}/artists.json');
+      final artistsFile = findBackupJsonFile(backupRoot, 'artists.json');
       List<dynamic>? artistsJsonRaw;
-      if (await artistsFile.exists()) {
-        final decodedArtists = jsonDecode(await artistsFile.readAsString());
-        if (decodedArtists is! List) {
-          throw Exception('Invalid artist backup format.');
+      if (artistsFile != null && await artistsFile.exists()) {
+        artistsJsonRaw = decodeBackupList(await artistsFile.readAsString());
+        if (artistsJsonRaw == null) {
+          throw Exception('아티스트 백업 데이터 형식이 올바르지 않습니다.');
         }
-        artistsJsonRaw = decodedArtists;
       }
 
       stageDir = Directory('${tempDir.path}/restore_stage_$effectiveTimestamp');
@@ -807,73 +827,94 @@ class AlbumRepository implements IAlbumRepository {
       final stagedArtistImagesDir = Directory('${stageDir.path}/artist_images');
       await stagedArtistImagesDir.create(recursive: true);
 
+      // 한 항목의 파싱 실패가 전체 복원을 중단시키지 않도록 항목별로 건너뛴다
+      var skippedAlbums = 0;
       final stagedAlbums = <Map<String, dynamic>>[];
       for (final albumData in albumsJsonRaw) {
-        final albumMap = parseBackupJsonMap(albumData, 'album');
-        final album = Album.fromMap(albumMap);
-        final stagedAlbum = album.toMap();
-        final imagePath = album.imagePath?.trim();
-
-        if (imagePath != null && imagePath.isNotEmpty) {
-          final sourceImage = resolveBackupImageFile(
-            extractDir,
-            imagePath,
-            searchFolders: const ['images'],
-          );
-          if (sourceImage != null) {
-            final ext = path.extension(sourceImage.path);
-            final fileName = 'album_${album.id}$ext';
-            final stagedImagePath = '${stagedAlbumImagesDir.path}/$fileName';
-            await sourceImage.copy(stagedImagePath);
-            stagedAlbum['imagePath'] = 'album_images/$fileName';
-          } else {
-            debugPrint(
-              '[Backup] 앨범 이미지 해석 실패: '
-              'albumId=${album.id}, path=$imagePath',
-            );
-            stagedAlbum['imagePath'] = null;
-          }
-        } else {
-          stagedAlbum['imagePath'] = null;
-        }
-
-        stagedAlbums.add(stagedAlbum);
-      }
-
-      final stagedArtists = <Map<String, dynamic>>[];
-      if (artistsJsonRaw != null) {
-        for (final artistData in artistsJsonRaw) {
-          final artistMap = parseBackupJsonMap(artistData, 'artist');
-          final artist = Artist.fromMap(artistMap);
-          final stagedArtist = artist.toMap();
-          final imagePath = artist.imagePath?.trim();
+        try {
+          final albumMap = parseBackupJsonMap(albumData, 'album');
+          final album = Album.fromMap(normalizeBackupAlbumMap(albumMap));
+          final stagedAlbum = album.toMap();
+          final imagePath = album.imagePath?.trim();
 
           if (imagePath != null && imagePath.isNotEmpty) {
             final sourceImage = resolveBackupImageFile(
-              extractDir,
+              backupRoot,
               imagePath,
-              searchFolders: const ['artist_images', 'images'],
+              searchFolders: const ['images'],
             );
             if (sourceImage != null) {
               final ext = path.extension(sourceImage.path);
-              final fileName = 'artist_${artist.id}$ext';
-              final stagedImagePath = '${stagedArtistImagesDir.path}/$fileName';
+              final fileName = 'album_${album.id}$ext';
+              final stagedImagePath = '${stagedAlbumImagesDir.path}/$fileName';
               await sourceImage.copy(stagedImagePath);
-              stagedArtist['imagePath'] = 'artist_images/$fileName';
+              stagedAlbum['imagePath'] = 'album_images/$fileName';
             } else {
               debugPrint(
-                '[Backup] 아티스트 이미지 해석 실패: '
-                'artistId=${artist.id}, path=$imagePath',
+                '[Backup] 앨범 이미지 해석 실패: '
+                'albumId=${album.id}, path=$imagePath',
               );
-              stagedArtist['imagePath'] = null;
+              stagedAlbum['imagePath'] = null;
             }
           } else {
-            stagedArtist['imagePath'] = null;
+            stagedAlbum['imagePath'] = null;
           }
 
-          stagedArtists.add(stagedArtist);
+          stagedAlbums.add(stagedAlbum);
+        } catch (e) {
+          skippedAlbums++;
+          debugPrint('[Backup] 앨범 항목 건너뜀: $e');
         }
       }
+
+      // 파일은 정상인데 전부 파싱 실패면 데이터를 건드리지 않고 실패 처리한다
+      if (albumsJsonRaw.isNotEmpty && stagedAlbums.isEmpty) {
+        throw Exception('앨범 데이터를 해석할 수 없습니다.');
+      }
+
+      var skippedArtists = 0;
+      final stagedArtists = <Map<String, dynamic>>[];
+      if (artistsJsonRaw != null) {
+        for (final artistData in artistsJsonRaw) {
+          try {
+            final artistMap = parseBackupJsonMap(artistData, 'artist');
+            final artist = Artist.fromMap(normalizeBackupArtistMap(artistMap));
+            final stagedArtist = artist.toMap();
+            final imagePath = artist.imagePath?.trim();
+
+            if (imagePath != null && imagePath.isNotEmpty) {
+              final sourceImage = resolveBackupImageFile(
+                backupRoot,
+                imagePath,
+                searchFolders: const ['artist_images', 'images'],
+              );
+              if (sourceImage != null) {
+                final ext = path.extension(sourceImage.path);
+                final fileName = 'artist_${artist.id}$ext';
+                final stagedImagePath =
+                    '${stagedArtistImagesDir.path}/$fileName';
+                await sourceImage.copy(stagedImagePath);
+                stagedArtist['imagePath'] = 'artist_images/$fileName';
+              } else {
+                debugPrint(
+                  '[Backup] 아티스트 이미지 해석 실패: '
+                  'artistId=${artist.id}, path=$imagePath',
+                );
+                stagedArtist['imagePath'] = null;
+              }
+            } else {
+              stagedArtist['imagePath'] = null;
+            }
+
+            stagedArtists.add(stagedArtist);
+          } catch (e) {
+            skippedArtists++;
+            debugPrint('[Backup] 아티스트 항목 건너뜀: $e');
+          }
+        }
+      }
+
+      lastBackupSkippedCount = skippedAlbums + skippedArtists;
 
       final albumImagesDir = Directory('${appDir.path}/album_images');
       if (await albumImagesDir.exists()) {
@@ -937,6 +978,9 @@ class AlbumRepository implements IAlbumRepository {
       return true;
     } catch (e) {
       debugPrint('Backup restore failed: $e');
+      _lastBackupRestoreError = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : '복원 중 오류가 발생했습니다.';
       return false;
     } finally {
       if (stageDir != null) {
