@@ -114,7 +114,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.widgetWithText(TextButton, '상세 보기'));
+      await tester.tap(find.widgetWithText(FilledButton, '상세 보기'));
       await settle(tester);
       expect(find.byType(DetailScreen), findsOneWidget);
       expect(find.text('E2E Preview B'), findsWidgets);
@@ -190,7 +190,7 @@ void main() {
       await settle(tester);
       expect(find.text(seedTitle), findsNothing);
 
-      await tester.tap(find.text('위시리스트'));
+      await tester.tap(find.byKey(const ValueKey('home-dock-wishlist')));
       await settle(tester);
       expect(find.text(seedTitle), findsWidgets);
 
@@ -200,7 +200,7 @@ void main() {
       await settle(tester);
       expect(find.text(seedTitle), findsNothing);
 
-      await tester.tap(find.text('컬렉션'));
+      await tester.tap(find.byKey(const ValueKey('home-dock-collection')));
       await settle(tester);
       expect(find.text(seedTitle), findsWidgets);
       expect(
@@ -242,7 +242,9 @@ void main() {
       );
       await settle(tester);
 
-      await tester.tap(find.byTooltip('2열 그리드로 보기'));
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await settle(tester);
+      await tester.tap(find.text('2열 그리드로 보기'));
       await settle(tester);
 
       await tester.tap(find.byType(PopupMenuButton<String>));
@@ -588,7 +590,9 @@ void main() {
     expect(await File(artist.imagePath!).exists(), isTrue);
 
     // 보기 모드 목록 → grid2 → grid3 → artists
-    await tester.tap(find.byTooltip('2열 그리드로 보기'));
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await settle(tester);
+    await tester.tap(find.text('2열 그리드로 보기'));
     await settle(tester);
     await tester.tap(find.byTooltip('3열 그리드로 보기'));
     await settle(tester);
@@ -708,10 +712,8 @@ void main() {
     expect(find.text('E2E Alpha Album'), findsOneWidget);
     expect(find.text('E2E Beta Album'), findsOneWidget);
 
-    // S09: 모든 곡 목록의 검색은 트랙 제목을 필터링한다
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await settle(tester);
-    await tester.tap(find.text('모든 곡 목록'));
+    // S09: 하단 메뉴의 모든 곡 목록에서 트랙 제목을 필터링한다
+    await tester.tap(find.byKey(const ValueKey('home-dock-all-songs')));
     await settle(tester);
     expect(find.byType(AllSongsScreen), findsOneWidget);
 

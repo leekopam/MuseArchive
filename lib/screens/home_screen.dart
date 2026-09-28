@@ -86,6 +86,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: _HomeAppBar(viewModel: viewModel, repository: repository),
+      bottomNavigationBar:
+          viewModel.viewMode == ViewMode.listPreview &&
+              !viewModel.isSearching &&
+              !viewModel.isReorderMode
+          ? _buildBottomDock(context, viewModel, repository)
+          : null,
       body: LoadingOverlay(
         // 재로드 시 블로킹 오버레이가 깜빡이지 않도록 최초 로드에만 표시한다
         isLoading: viewModel.isLoading && !viewModel.hasAlbums,
@@ -94,26 +100,14 @@ class _HomeScreenState extends State<HomeScreen> {
             SizedBox(
               height: MediaQuery.of(context).padding.top + kToolbarHeight + 8,
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: CupertinoSlidingSegmentedControl<AlbumView>(
-                groupValue: viewModel.currentView,
-                onValueChanged: _onSegmentChanged,
-                thumbColor: theme.colorScheme.surface,
-                children: const {
-                  AlbumView.collection: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: Text('컬렉션'),
-                  ),
-                  AlbumView.wishlist: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: Text('위시리스트'),
-                  ),
-                },
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+            if (viewModel.viewMode != ViewMode.listPreview ||
+                viewModel.isReorderMode) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildSegment(theme, viewModel.currentView, 'global'),
               ),
-            ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
+            ],
             // 검색창이 비어 있을 때 최근 검색어를 칩으로 노출한다
             if (viewModel.isSearching &&
                 viewModel.searchQuery.isEmpty &&
@@ -172,6 +166,77 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  Widget _buildSegment(ThemeData theme, AlbumView view, String key) {
+    return SizedBox(
+      width: double.infinity,
+      child: CupertinoSlidingSegmentedControl<AlbumView>(
+        key: ValueKey('home-segment-$key'),
+        groupValue: view,
+        onValueChanged: _onSegmentChanged,
+        thumbColor: theme.colorScheme.surface,
+        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+        children: const {
+          AlbumView.collection: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text('컬렉션'),
+          ),
+          AlbumView.wishlist: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text('위시리스트'),
+          ),
+        },
+      ),
+    );
+  }
+
+  Widget _buildBottomDock(
+    BuildContext context,
+    HomeViewModel viewModel,
+    IAlbumRepository repository,
+  ) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+        child: Material(
+          key: const ValueKey('home-bottom-dock'),
+          color: theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: BorderSide(color: theme.colorScheme.outline),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Row(
+            children: [
+              _HomeDockAction(
+                key: const ValueKey('home-dock-collection'),
+                label: '보관함',
+                icon: Icons.grid_view_outlined,
+                selected: viewModel.currentView == AlbumView.collection,
+                onTap: () => _onSegmentChanged(AlbumView.collection),
+              ),
+              _HomeDockAction(
+                key: const ValueKey('home-dock-wishlist'),
+                label: '위시리스트',
+                icon: Icons.favorite_border,
+                selected: viewModel.currentView == AlbumView.wishlist,
+                onTap: () => _onSegmentChanged(AlbumView.wishlist),
+              ),
+              _HomeDockAction(
+                key: const ValueKey('home-dock-all-songs'),
+                label: '모든 곡',
+                icon: Icons.music_note_outlined,
+                selected: false,
+                onTap: () => _navigateToAllSongs(context, repository),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
   // endregion
 
   // endregion
@@ -204,66 +269,104 @@ class _HomeScreenState extends State<HomeScreen> {
     AlbumView view,
   ) {
     final albums = viewModel.getAlbumsForView(view);
-    if (albums.isEmpty) {
-      return _buildAlbumGrid(context, viewModel, view, isCompact: false);
-    }
-
     final selectedId = _selectedAlbumIds[view];
-    final selected = albums.firstWhere(
-      (album) => album.id == selectedId,
-      orElse: () => albums.first,
-    );
-    final others = albums.where((album) => album.id != selected.id).toList();
+    final selected = albums.isEmpty
+        ? null
+        : albums.firstWhere(
+            (album) => album.id == selectedId,
+            orElse: () => albums.first,
+          );
+    final others = albums.where((album) => album.id != selected?.id).toList();
     final theme = Theme.of(context);
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('앨범 목록', style: theme.textTheme.displayLarge),
+        const SizedBox(height: 10),
+        _buildSegment(theme, view, view.name),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${albums.length}장 · ${_getSortOptionText(viewModel.sortOption)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => _showSortOptions(context, viewModel),
+              child: const Text('정렬'),
+            ),
+          ],
+        ),
+        if (selected != null) ...[
+          AnimatedSwitcher(
+            duration: reduceMotionEnabled
+                ? Duration.zero
+                : const Duration(milliseconds: 140),
+            switchInCurve: Curves.easeOut,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.965, end: 1).animate(animation),
+                child: child,
+              ),
+            ),
+            child: _AlbumPreviewCard(
+              key: ValueKey('album-preview-${selected.id}'),
+              album: selected,
+            ),
+          ),
+          if (others.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('다른 앨범', style: theme.textTheme.titleLarge),
+                ),
+                TextButton(
+                  onPressed: () => _navigateToAllSongs(
+                    context,
+                    context.read<IAlbumRepository>(),
+                  ),
+                  child: const Text('모든 곡'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ],
+    );
+
+    if (albums.isEmpty) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: header,
+          ),
+          Expanded(
+            child: _buildAlbumGrid(context, viewModel, view, isCompact: false),
+          ),
+        ],
+      );
+    }
 
     return ListView.builder(
       key: PageStorageKey('home-preview-${view.name}'),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       itemCount: others.length + 1,
       itemBuilder: (context, index) {
         if (index > 0) {
           final album = others[index - 1];
           return _AlbumPreviewRow(
+            key: ValueKey('album-row-${album.id}'),
             album: album,
             onSelect: () => setState(() => _selectedAlbumIds[view] = album.id),
           );
         }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('앨범 목록', style: theme.textTheme.headlineLarge),
-            const SizedBox(height: 6),
-            Text(
-              '${albums.length}장 · ${_getSortOptionText(viewModel.sortOption)}',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 20),
-            AnimatedSwitcher(
-              duration: reduceMotionEnabled
-                  ? Duration.zero
-                  : const Duration(milliseconds: 140),
-              switchInCurve: Curves.easeOut,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.965, end: 1).animate(animation),
-                  child: child,
-                ),
-              ),
-              child: _AlbumPreviewCard(
-                key: ValueKey('album-preview-${selected.id}'),
-                album: selected,
-              ),
-            ),
-            if (others.isNotEmpty) ...[
-              const SizedBox(height: 28),
-              Text('다른 앨범', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 8),
-            ],
-          ],
-        );
+        return header;
       },
     );
   }
@@ -525,28 +628,25 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
               },
               tooltip: '검색',
             ),
-            IconButton(
-              icon: Icon(
-                viewModel.viewMode == ViewMode.listPreview
-                    ? Icons.grid_view_rounded
-                    : viewModel.viewMode == ViewMode.grid2
-                    ? Icons.grid_3x3_rounded
+            if (viewModel.viewMode != ViewMode.listPreview)
+              IconButton(
+                icon: Icon(
+                  viewModel.viewMode == ViewMode.grid2
+                      ? Icons.grid_3x3_rounded
+                      : viewModel.viewMode == ViewMode.grid3
+                      ? Icons.people_alt_outlined
+                      : Icons.view_list_rounded,
+                ),
+                onPressed: () {
+                  HapticService.toggle();
+                  viewModel.toggleViewMode();
+                },
+                tooltip: viewModel.viewMode == ViewMode.grid2
+                    ? '3열 그리드로 보기'
                     : viewModel.viewMode == ViewMode.grid3
-                    ? Icons.people_alt_outlined
-                    : Icons.view_list_rounded,
+                    ? '아티스트 목록으로 보기'
+                    : '목록과 미리보기로 보기',
               ),
-              onPressed: () {
-                HapticService.toggle();
-                viewModel.toggleViewMode();
-              },
-              tooltip: viewModel.viewMode == ViewMode.listPreview
-                  ? '2열 그리드로 보기'
-                  : viewModel.viewMode == ViewMode.grid2
-                  ? '3열 그리드로 보기'
-                  : viewModel.viewMode == ViewMode.grid3
-                  ? '아티스트 목록으로 보기'
-                  : '목록과 미리보기로 보기',
-            ),
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
               onPressed: () {
@@ -570,14 +670,14 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           case 'sort':
             _showSortOptions(context, viewModel);
             break;
+          case 'view':
+            viewModel.toggleViewMode();
+            break;
           case 'reorder':
             viewModel.toggleReorderMode();
             break;
           case 'all_songs':
-            Navigator.push(
-              context,
-              AnimatedPageRoute(page: AllSongsScreen(repository: repository)),
-            );
+            _navigateToAllSongs(context, repository);
             break;
           case 'settings':
             Navigator.push(
@@ -588,6 +688,14 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
         }
       },
       itemBuilder: (context) => [
+        if (viewModel.viewMode == ViewMode.listPreview)
+          const PopupMenuItem(
+            value: 'view',
+            child: ListTile(
+              leading: Icon(Icons.grid_view_outlined),
+              title: Text('2열 그리드로 보기'),
+            ),
+          ),
         const PopupMenuItem(
           value: 'sort',
           child: ListTile(leading: Icon(Icons.sort), title: Text('정렬')),
@@ -623,6 +731,67 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
 }
 // endregion
 
+class _HomeDockAction extends StatelessWidget {
+  const _HomeDockAction({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = selected
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurfaceVariant;
+    return Expanded(
+      child: Semantics(
+        label: '$label 탭',
+        selected: selected,
+        button: true,
+        onTap: onTap,
+        child: ExcludeSemantics(
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 68),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 21, color: color),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: color,
+                        fontWeight: selected
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AlbumPreviewCard extends StatelessWidget {
   const _AlbumPreviewCard({super.key, required this.album});
 
@@ -657,10 +826,10 @@ class _AlbumPreviewCard extends StatelessWidget {
         onLongPress: openMenu,
         child: Card(
           margin: EdgeInsets.zero,
-          color: theme.colorScheme.surfaceContainerLow,
+          color: theme.colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: theme.colorScheme.outlineVariant),
+            side: BorderSide(color: theme.colorScheme.outline),
           ),
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -677,29 +846,31 @@ class _AlbumPreviewCard extends StatelessWidget {
                         album.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
+                        style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        album.artist,
+                        album.releaseDateString.isEmpty
+                            ? album.artist
+                            : '${album.artist} · ${album.releaseDateString}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      if (album.releaseDateString.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          album.releaseDateString,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
                       const SizedBox(height: 10),
-                      TextButton(
+                      FilledButton(
                         onPressed: openDetail,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                        ),
                         child: const Text('상세 보기'),
                       ),
                     ],
@@ -715,7 +886,11 @@ class _AlbumPreviewCard extends StatelessWidget {
 }
 
 class _AlbumPreviewRow extends StatelessWidget {
-  const _AlbumPreviewRow({required this.album, required this.onSelect});
+  const _AlbumPreviewRow({
+    super.key,
+    required this.album,
+    required this.onSelect,
+  });
 
   final Album album;
   final VoidCallback onSelect;
@@ -740,44 +915,52 @@ class _AlbumPreviewRow extends StatelessWidget {
       button: true,
       onTap: select,
       onLongPress: openMenu,
-      child: TapScaleWrapper(
-        onTap: select,
-        onLongPress: openMenu,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          child: Row(
-            children: [
-              _AlbumPreviewCover(album: album, size: 48),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      album.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: theme.colorScheme.outline),
+          ),
+        ),
+        child: TapScaleWrapper(
+          onTap: select,
+          onLongPress: openMenu,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            child: Row(
+              children: [
+                _AlbumPreviewCover(album: album, size: 42),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        album.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    Text(
-                      album.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                      Text(
+                        album.artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ],
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  size: 18,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1122,6 +1305,13 @@ void _navigateToAddScreen(BuildContext context, AlbumView currentView) {
     AnimatedPageRoute(
       page: AddScreen(isWishlist: currentView == AlbumView.wishlist),
     ),
+  );
+}
+
+void _navigateToAllSongs(BuildContext context, IAlbumRepository repository) {
+  Navigator.push(
+    context,
+    AnimatedPageRoute(page: AllSongsScreen(repository: repository)),
   );
 }
 

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
 import 'package:my_album_app/models/album.dart';
+import 'package:my_album_app/screens/all_songs_screen.dart';
 import 'package:my_album_app/screens/home_screen.dart';
 import 'package:my_album_app/services/i_album_repository.dart';
 import 'package:my_album_app/viewmodels/home_viewmodel.dart';
@@ -61,16 +62,97 @@ void main() {
 
       await tester.tap(find.byTooltip('검색'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(CupertinoSearchTextField), 'Preview A');
+      await tester.enterText(
+        find.byType(CupertinoSearchTextField),
+        'Preview A',
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('album-preview-a')), findsOneWidget);
       await tester.tap(find.byTooltip('검색'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('위시리스트'));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('home-segment-collection')),
+          matching: find.text('위시리스트'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('album-preview-w')), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('S01 I 화면의 제목·탭 순서와 하단 메뉴가 시안과 일치한다', (tester) async {
+      repository = FakeAlbumRepository(
+        albums: [
+          Album(id: 'c', title: 'Collection Album', artists: const ['A']),
+          Album(
+            id: 'w',
+            title: 'Wishlist Album',
+            artists: const ['B'],
+            isWishlist: true,
+          ),
+        ],
+      );
+      viewModel = HomeViewModel(repository);
+      await openHome(tester);
+
+      expect(
+        tester.getTopLeft(find.text('앨범 목록')).dy,
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(const ValueKey('home-segment-collection')))
+              .dy,
+        ),
+      );
+      expect(find.widgetWithText(FilledButton, '상세 보기'), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-bottom-dock')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('home-dock-wishlist')));
+      await tester.pumpAndSettle();
+      expect(viewModel.currentView, AlbumView.wishlist);
+      expect(find.text('Wishlist Album'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('home-dock-all-songs')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AllSongsScreen), findsOneWidget);
+    });
+
+    testWidgets('S01 I 작은 Android 화면의 글자 확대에서도 넘치지 않는다', (tester) async {
+      tester.view.physicalSize = const Size(360, 600);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      repository = FakeAlbumRepository(
+        albums: [
+          Album(
+            id: 'large',
+            title: '긴 제목의 앨범 미리보기 테스트',
+            artists: const ['이름이 긴 아티스트'],
+          ),
+        ],
+      );
+      viewModel = HomeViewModel(repository);
+      await openHome(tester);
+
+      expect(find.text('앨범 목록'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('S01 I 빈 컬렉션에서도 탭과 추가 안내가 보인다', (tester) async {
+      repository = FakeAlbumRepository(albums: []);
+      viewModel = HomeViewModel(repository);
+      await openHome(tester);
+
+      expect(find.text('앨범 목록'), findsOneWidget);
+      expect(find.text('앨범 추가하기'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('home-segment-collection')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('home-bottom-dock')), findsOneWidget);
     });
 
     testWidgets('S01 세그먼트 전환으로 컬렉션/위시리스트 목록이 교체된다', (tester) async {
@@ -92,7 +174,12 @@ void main() {
       expect(find.text('Coll Album'), findsOneWidget);
       expect(find.text('Wish Album'), findsNothing);
 
-      await tester.tap(find.text('위시리스트'));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('home-segment-collection')),
+          matching: find.text('위시리스트'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(viewModel.currentView, AlbumView.wishlist);
@@ -193,7 +280,9 @@ void main() {
 
       expect(viewModel.viewMode, ViewMode.listPreview);
 
-      await tester.tap(find.byTooltip('2열 그리드로 보기'));
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2열 그리드로 보기'));
       await tester.pumpAndSettle();
       expect(viewModel.viewMode, ViewMode.grid2);
       expect(find.byType(GridView), findsWidgets);
