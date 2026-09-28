@@ -287,14 +287,16 @@ void main() {
         'E2E Artist',
       );
 
-      final spotifyButton = find.byTooltip('Spotify에서 링크 검색');
-      await tester.scrollUntilVisible(
-        spotifyButton,
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
+      // 직접 입력 후 열린 IME가 탭을 가리지 않도록 포커스를 해제해 키보드를 닫는다
+      // (실기기에서는 fake testTextInput이 등록되지 않아 hide()를 쓸 수 없다)
+      FocusManager.instance.primaryFocus?.unfocus();
       await settle(tester);
-      await tester.tap(spotifyButton);
+
+      // 이미지·링크 동시 병합은 커버 이미지 선택 → 'Spotify에서 검색' 경로다
+      // ('Spotify에서 링크 검색' 아이콘은 링크만 채우는 별도 검색이므로 쓰지 않는다)
+      await tester.tap(find.byIcon(Icons.add_a_photo_outlined));
+      await settle(tester);
+      await tester.tap(find.widgetWithText(ListTile, 'Spotify에서 검색'));
       await settle(tester);
 
       final dialog = find.widgetWithText(AlertDialog, 'Spotify 이미지 검색');
