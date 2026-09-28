@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive_io.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -443,6 +444,78 @@ void main() {
     // 시드 데이터 정리
     await repository.delete(seedId);
     await settle(tester);
+  });
+
+  testWidgets('S11 구버전 포맷 백업 zip을 실기기에서 복원한다', (tester) async {
+    // 구버전 앱이 만든 백업 포맷: 루트 폴더 중첩, 'artist' 단수 문자열,
+    // 리스트 필드 문자열, imagePath는 기기 절대경로, 이미지는 images/ 폴더.
+    const legacyId = 'e2e-legacy-0001';
+    const legacyTitle = 'E2E Legacy Album';
+    app.main();
+    await settle(tester);
+
+    final context = tester.element(find.byType(HomeScreen));
+    final repository = context.read<IAlbumRepository>();
+    await repository.delete(legacyId);
+    expect(
+      (await repository.getAll()).any((a) => a.id == legacyId),
+      isFalse,
+      reason: '기존 앨범과 테스트 시드 ID가 겹치면 테스트를 중단한다',
+    );
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final src = Directory(
+        '${tempDir.path}/legacy_src_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      // 구버전 zipDirectory가 만든 중첩 루트 구조를 재현한다
+      final inner = Directory('${src.path}/backup_legacy')
+        ..createSync(recursive: true);
+      Directory('${inner.path}/images').createSync(recursive: true);
+      File(
+        '${inner.path}/images/cover.jpg',
+      ).writeAsBytesSync(<int>[255, 216, 255, 224, 1, 2, 3]);
+      File('${inner.path}/artists.json').writeAsStringSync(
+        jsonEncode([
+          {
+            'id': 'a-1',
+            'name': '옛날 가수',
+            'albumIds': [legacyId],
+          },
+        ]),
+      );
+      File('${inner.path}/albums.json').writeAsStringSync(
+        jsonEncode([
+          {
+            'id': legacyId,
+            'title': legacyTitle,
+            'artist': '옛날 가수',
+            'labels': 'Old Label',
+            'imagePath': '/data/user/0/com.old/files/album_images/cover.jpg',
+            'formats': 'CD',
+            'releaseDate': '2020.01.01',
+            'genres': 'Rock',
+          },
+        ]),
+      );
+      final zipPath = '${src.parent.path}/legacy_backup.zip';
+      ZipFileEncoder().zipDirectory(src, filename: zipPath);
+
+      final appDir = await getApplicationDocumentsDirectory();
+      final restored = await (repository as AlbumRepository)
+          .importBackupFromZipPath(zipPath, tempDir: tempDir, appDir: appDir);
+      expect(restored, isTrue);
+      await settle(tester);
+
+      final albums = await repository.getAll();
+      final album = albums.firstWhere((a) => a.id == legacyId);
+      expect(album.artists, contains('옛날 가수'));
+      expect(album.imagePath, isNotNull);
+      expect(find.text(legacyTitle), findsWidgets);
+    } finally {
+      await repository.delete(legacyId);
+      await settle(tester);
+    }
   });
 
   testWidgets('S11 시스템 파일 창으로 백업 저장 → 파일 선택 → 복원', (tester) async {
