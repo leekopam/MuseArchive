@@ -82,6 +82,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             // Use release signing when key.properties is configured; otherwise
             // keep the debug fallback so local release builds still work.
